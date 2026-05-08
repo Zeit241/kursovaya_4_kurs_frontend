@@ -40,6 +40,20 @@ export interface Room {
 	name?: string;
 }
 
+export interface Diagnosis {
+	id: number;
+	code: string;
+	name: string;
+	category: string | null;
+}
+
+export interface AppointmentDiagnosisInfo {
+	id: number;
+	code: string;
+	name: string;
+	category: string | null;
+}
+
 export interface Doctor {
 	id: number;
 	user: User;
@@ -82,7 +96,14 @@ export interface Appointment {
 	createdAt: string;
 	updatedAt: string;
 	cancelReason: string | null;
-	diagnosis?: string | null;
+	/** Жалобы, анамнез, рекомендации (мед. карта приёма) */
+	complaints?: string | null;
+	anamnesis?: string | null;
+	recommendations?: string | null;
+	/** ID диагноза (МКБ) из БД */
+	diagnosisId?: number | null;
+	/** Вложенный объект из API; для обратной совместимости допускается строка в старых ответах */
+	diagnosis?: AppointmentDiagnosisInfo | string | null;
 	// Результат приёма (может отсутствовать в некоторых ответах)
 	result?: string | null;
 	doctor?: Doctor | null;
@@ -92,6 +113,27 @@ export interface Appointment {
 		code: string;
 		name?: string;
 	} | null;
+	service?: {
+		id: number;
+		name: string;
+		code?: string | null;
+		price?: number | string | null;
+		durationMinutes?: number | null;
+	} | null;
+}
+
+/** Услуга клиники (не путать с глобальным DOM Service) */
+export interface ClinicService {
+	id: number;
+	name: string;
+	code?: string | null;
+	price?: number | string | null;
+	durationMinutes?: number | null;
+	description?: string | null;
+	/** Специализации (категории) из specialization_services */
+	specializationNames?: string[] | null;
+	/** ID специализаций (админка, формы редактирования) */
+	specializationIds?: number[] | null;
 }
 
 export interface AvailableAppointmentSlot {
@@ -110,15 +152,31 @@ export interface AvailableAppointmentSlot {
 	updatedAt: string;
 	cancelReason: string | null;
 	diagnosis: string | null;
+	serviceId?: number | null;
+	service?: Pick<ClinicService, "id" | "name" | "code" | "durationMinutes"> | null;
 }
 
 export interface Queue {
-	id: number;
+	id?: number | null;
 	doctorId: number;
-	appointmentId: number;
+	appointmentId?: number | null;
 	patientId: number;
 	position: number;
 	lastUpdated: string;
+}
+
+/** Ответ POST .../appointments/:id/complete */
+export interface CompleteAppointmentResponse {
+	success: boolean;
+	message: string;
+	appointment: Appointment;
+	queue: Queue[];
+}
+
+export interface CompleteAppointmentRequest {
+	/** Код МКБ или числовой id */
+	diagnosis?: string | number | null;
+	diagnosisId?: number | null;
 }
 
 export interface Review {
@@ -138,6 +196,33 @@ export interface LoginRequest {
 	password: string;
 }
 
+/** Фрагмент CurrentUserDto.patient (ответ логина) */
+export interface LoginPatientInfoPayload {
+	id: number;
+	birthDate?: string | null;
+	gender?: number | null;
+	insuranceNumber?: string | null;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+/** CurrentUserDto в теле POST /api/auth/login */
+export interface LoginCurrentUserPayload {
+	id: number;
+	email: string;
+	phone?: string | null;
+	firstName?: string | null;
+	lastName?: string | null;
+	middleName?: string | null;
+	createdAt: string;
+	updatedAt: string;
+	active: boolean;
+	patientId?: number | null;
+	doctorId?: number | null;
+	patient?: LoginPatientInfoPayload | null;
+	doctor?: unknown;
+}
+
 export interface LoginResponse {
 	success?: boolean;
 	status?: number;
@@ -147,6 +232,7 @@ export interface LoginResponse {
 		email: string;
 		message: string;
 		roleCode?: string; // "patient", "doctor", "admin"
+		user?: LoginCurrentUserPayload | null;
 	} | null;
 }
 
@@ -240,6 +326,27 @@ export interface UpdateSpecializationRequest {
 	description?: string;
 }
 
+/** Тело POST/PUT услуги (модель Service на бэкенде) */
+export interface CreateClinicServiceRequest {
+	name: string;
+	code?: string | null;
+	price: number | string;
+	durationMinutes: number;
+	description?: string | null;
+}
+
+export interface UpdateClinicServiceRequest {
+	name?: string;
+	code?: string | null;
+	price?: number | string;
+	durationMinutes?: number;
+	description?: string | null;
+}
+
+export interface SetServiceSpecializationsRequest {
+	specializationIds: number[];
+}
+
 export interface CreatePatientRequest {
 	user: {
 		email: string;
@@ -308,14 +415,22 @@ export interface CreateAppointmentRequest {
 
 // Частичное обновление приёма
 export interface UpdateAppointmentRequest {
-	status?: "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
-	diagnosis?: string | null;
+	status?: "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show" | "available";
+	/** Код МКБ или id диагноза */
+	diagnosis?: string | number | null;
+	diagnosisId?: number | null;
+	cancelReason?: string | null;
+	complaints?: string | null;
+	anamnesis?: string | null;
+	recommendations?: string | null;
 	result?: string | null;
 }
 
 export interface BookAppointmentRequest {
 	appointmentId: number;
 	userId: number;
+	/** Если слот без услуги — бэкенд проставит; если у слота услуга — должна совпадать */
+	serviceId?: number | null;
 }
 
 export interface CreateQueueRequest {
@@ -382,8 +497,52 @@ export interface UpdateReviewRequest {
 // Query параметры для поиска и фильтрации
 export interface DoctorsQueryParams {
 	q?: string; // Поисковый запрос
+	/** Врачи, у которых специализация связана с услугой (specialization_services) */
+	serviceId?: number;
 	limit?: number;
 	offset?: number;
 	sortBy?: "firstName" | "first_name" | "lastName" | "last_name" | "experience" | "experience_years" | "experienceYears" | "rating" | "created" | "created_at" | "createdAt" | "updated" | "updated_at" | "updatedAt";
 	sortOrder?: "asc" | "desc";
+}
+
+export interface ServicesQueryParams {
+	/** Услуги по специализациям врача */
+	doctorId?: number;
+}
+
+/** Параметры списка приёмов (админ/фильтры) */
+export interface AppointmentsQueryParams {
+	doctorId?: number;
+	status?: string;
+	date?: string;
+}
+
+/** Приёмы текущего врача (JWT) */
+export interface MyDoctorAppointmentsParams {
+	date?: string;
+}
+
+/** Строка приёма в отчётах (агрегированные данные) */
+export interface DailyReportAppointmentRow {
+	appointmentId?: number;
+	startTime?: string;
+	status?: string;
+	doctorDisplayName?: string;
+	patientFullName?: string;
+	patientPhone?: string;
+	roomNumber?: string;
+	diagnosis?: unknown;
+}
+
+/** Ответ отчётов (reports API) */
+export interface DailyReport {
+	date?: string;
+	doctorId?: number;
+	doctorDisplayName?: string | null;
+	appointments?: DailyReportAppointmentRow[];
+	totalAppointments?: number;
+	scheduledCount?: number;
+	completedCount?: number;
+	cancelledCount?: number;
+	noShowCount?: number;
 }

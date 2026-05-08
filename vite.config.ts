@@ -11,4 +11,15 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    // Обход CORS: браузер шлёт запросы на тот же origin (:5173), Vite проксирует на Directus.
+    // В .env задайте VITE_DIRECTUS_URL=/__directus (или полный http://localhost:8055 + CORS в docker-compose).
+    proxy: {
+      "/__directus": {
+        target: "http://127.0.0.1:8055",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/__directus/, ""),
+      },
+    },
+  },
 })

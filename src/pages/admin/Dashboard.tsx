@@ -1,7 +1,13 @@
-import { appointmentsApi, doctorsApi, patientsApi } from "@/api/client";
+import type { Appointment } from "@/api/types";
 import { CalendarDays, ClipboardList, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
+
+import {
+	useGetAppointmentsQuery,
+	useGetDoctorsQuery,
+	useGetPatientsQuery,
+} from "@/store/api/apiSlice";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,46 +25,28 @@ interface DashboardStats {
 }
 
 export default function AdminDashboard() {
-	const [stats, setStats] = useState<DashboardStats>({
-		doctorsCount: 0,
-		patientsCount: 0,
-		appointmentsToday: 0,
-	});
-	const [appointments, setAppointments] = useState<any[]>([]);
-	const [loading, setLoading] = useState(true);
+	const today = new Date().toISOString().split("T")[0];
+	const { data: doctorsData = [], isLoading: loadingDoctors } = useGetDoctorsQuery();
+	const { data: patientsData = [], isLoading: loadingPatients } = useGetPatientsQuery();
+	const { data: todayAppointmentsRaw = [], isLoading: loadingAppointments } =
+		useGetAppointmentsQuery({ date: today });
 
-	useEffect(() => {
-		const fetchData = async () => {
-			try {
-				// Получаем статистику и ближайшие приемы параллельно
-				const [doctorsData, patientsData, appointmentsData] = await Promise.all([
-					doctorsApi.getAll(),
-					patientsApi.getAll(),
-					appointmentsApi.getAll(),
-				]);
+	const filteredAppointments = useMemo(
+		() => todayAppointmentsRaw.filter((apt) => apt.patientId !== null),
+		[todayAppointmentsRaw]
+	);
 
-				// Фильтруем приемы на сегодня
-				const today = new Date().toISOString().split('T')[0];
-				const todayAppointments = appointmentsData.filter(apt => {
-					const aptDate = apt.startTime.split('T')[0];
-					return aptDate === today;
-				});
+	const stats = useMemo<DashboardStats>(
+		() => ({
+			doctorsCount: doctorsData.length,
+			patientsCount: patientsData.length,
+			appointmentsToday: filteredAppointments.length,
+		}),
+		[doctorsData.length, patientsData.length, filteredAppointments.length]
+	);
 
-				setStats({
-					doctorsCount: doctorsData.length,
-					patientsCount: patientsData.length,
-					appointmentsToday: todayAppointments.length,
-				});
-				setAppointments(todayAppointments);
-			} catch (error) {
-				console.error("Ошибка при загрузке данных:", error);
-			} finally {
-				setLoading(false);
-			}
-		};
-
-		fetchData();
-	}, []);
+	const appointments: Appointment[] = filteredAppointments;
+	const loading = loadingDoctors || loadingPatients || loadingAppointments;
 
 	if (loading) {
 		return (
@@ -165,6 +153,16 @@ export default function AdminDashboard() {
 										Добавить нового врача
 									</Link>
 								</Button>
+								<Button asChild variant="outline" className="w-full ">
+									<Link to="/admin/categories">
+										Категории услуг
+									</Link>
+								</Button>
+								<Button asChild variant="outline" className="w-full ">
+									<Link to="/admin/services">
+										Услуги клиники
+									</Link>
+								</Button>
 							</CardContent>
 						</Card>
 
@@ -179,29 +177,70 @@ export default function AdminDashboard() {
 							</CardHeader>
 							<CardContent>
 								<div className="space-y-4">
-									{appointments.map((appointment) => (
-										<div
-											key={appointment.id}
-											className="flex items-center justify-between rounded-lg border border-slate-800 p-3 transition-all hover:border-blue-900/50 hover:bg-slate-800/50"
-										>
-											<div>
-												<p className="font-medium">
-													Пациент ID: {appointment.patientId}
-												</p>
-												<p className="text-sm text-muted-foreground">
-													Врач ID: {appointment.doctorId}
-												</p>
-											</div>
-											<div className="text-right">
-												<p className="font-medium">
-													{new Date(appointment.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-												</p>
-												<p className="text-sm text-muted-foreground">
-													{appointment.roomId ? `Кабинет ${appointment.roomId}` : 'Кабинет не указан'}
-												</p>
-											</div>
-										</div>
-									))}
+									{appointments.length === 0 ? (
+										<p className="text-sm text-muted-foreground text-center py-4">
+											Нет приёмов на сегодня
+										</p>
+									) : (
+										appointments.map((appointment) => {
+											// Получаем имя пациента
+											let patientName = `Пациент ID: ${appointment.patientId}`;
+											if (appointment.patient) {
+												const patient = appointment.patient as any;
+												if (patient.user) {
+													patientName = `${patient.user.lastName} ${patient.user.firstName} ${patient.user.middleName || ''}`.trim();
+												} else if (patient.lastName && patient.firstName) {
+													// Если API возвращает поля напрямую
+													patientName = `${patient.lastName} ${patient.firstName} ${patient.middleName || ''}`.trim();
+												}
+											}
+											
+											// Получаем имя врача
+											let doctorName = `Врач ID: ${appointment.doctorId}`;
+											if (appointment.doctor) {
+												const doctor = appointment.doctor as any;
+												if (doctor.displayName) {
+													doctorName = doctor.displayName;
+												} else if (doctor.user) {
+													doctorName = `${doctor.user.lastName} ${doctor.user.firstName} ${doctor.user.middleName || ''}`.trim();
+												} else if (doctor.firstName && doctor.lastName) {
+													// Если API возвращает поля напрямую
+													doctorName = `${doctor.firstName} ${doctor.lastName}`;
+												}
+											}
+											
+											// Получаем название кабинета
+											const roomName = appointment.room
+												? appointment.room.name || `Кабинет ${appointment.room.code}`
+												: appointment.roomId
+												? `Кабинет ${appointment.roomId}`
+												: 'Кабинет не указан';
+
+											return (
+												<div
+													key={appointment.id}
+													className="flex items-center justify-between rounded-lg border border-slate-800 p-3 transition-all hover:border-blue-900/50 hover:bg-slate-800/50"
+												>
+													<div>
+														<p className="font-medium">
+															{patientName}
+														</p>
+														<p className="text-sm text-muted-foreground">
+															{doctorName}
+														</p>
+													</div>
+													<div className="text-right">
+														<p className="font-medium">
+															{new Date(appointment.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+														</p>
+														<p className="text-sm text-muted-foreground">
+															{roomName}
+														</p>
+													</div>
+												</div>
+											);
+										})
+									)}
 								</div>
 								<Button asChild className="mt-4 w-full ">
 									<Link to="/admin/appointments">

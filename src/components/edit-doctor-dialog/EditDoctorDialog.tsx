@@ -3,10 +3,8 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { PatternFormat } from "react-number-format";
-import * as z from "zod";
 
-import { doctorsApi, specializationsApi } from "@/api/client";
-import { Doctor, Specialization } from "@/api/types";
+import { Doctor } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -28,33 +26,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown } from "lucide-react";
+import { directusAssetPreviewUrl, uploadImageToDirectus } from "@/lib/directusUpload";
+import { doctorPhotoImgSrc } from "@/lib/doctorPhotoSrc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const formSchema = z.object({
-	lastName: z.string().min(2, "Фамилия должна содержать минимум 2 символа"),
-	firstName: z.string().min(2, "Имя должно содержать минимум 2 символа"),
-	middleName: z.string().optional(),
-	phone: z
-		.string()
-		.regex(/^\+7 \(\d{3}\) \d{3}-\d{2}-\d{2}$/, "Неверный формат телефона")
-		.optional(),
-	email: z.string().email("Неверный формат email").min(1, "Email обязателен"),
-	experienceYears: z
-		.string()
-		.optional()
-		.refine((val) => {
-			if (!val) return true;
-			const num = parseInt(val);
-			return !isNaN(num) && num >= 0 && num <= 80;
-		}, "Стаж должен быть от 0 до 80 лет"),
-	bio: z
-		.string()
-		.max(50, "Биография не должна превышать 50 символов")
-		.optional(),
-	specializationIds: z.array(z.number()).optional(),
-	photo: z.string().optional(),
-});
+import {
+	useGetSpecializationsQuery,
+	useUpdateDoctorMutation,
+} from "@/store/api/apiSlice";
+
+import {
+	editDoctorFormSchema,
+	type EditDoctorFormValues,
+} from "./edit-doctor-form-schema";
 
 interface EditDoctorDialogProps {
 	doctor?: Doctor;
@@ -69,12 +54,15 @@ export function EditDoctorDialog({
 	open: controlledOpen,
 	onOpenChange,
 }: EditDoctorDialogProps) {
+	const { data: specializations = [], isLoading: isLoadingSpecializations } =
+		useGetSpecializationsQuery();
+	const [updateDoctor] = useUpdateDoctorMutation();
 	const [internalOpen, setInternalOpen] = useState(false);
 	const open = controlledOpen ?? internalOpen;
 	const setOpen = onOpenChange ?? setInternalOpen;
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const form = useForm<z.infer<typeof formSchema>>({
-		resolver: zodResolver(formSchema),
+	const form = useForm<EditDoctorFormValues>({
+		resolver: zodResolver(editDoctorFormSchema),
 		defaultValues: {
 			lastName: "",
 			firstName: "",
@@ -87,10 +75,9 @@ export function EditDoctorDialog({
 			photo: undefined,
 		},
 	});
-	const [specializations, setSpecializations] = useState<Specialization[]>([]);
-	const [isLoadingSpecializations, setIsLoadingSpecializations] = useState(true);
 	const [isMultiSelectOpen, setIsMultiSelectOpen] = useState(false);
 	const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+	const [isPhotoUploading, setIsPhotoUploading] = useState(false);
 	const selectedSpecializationIds = form.watch("specializationIds") || [];
 	const multiSelectRef = useRef<HTMLDivElement>(null);
 
@@ -114,31 +101,13 @@ export function EditDoctorDialog({
 		};
 	}, [isMultiSelectOpen]);
 
-	useEffect(() => {
-		const fetchSpecializations = async () => {
-			setIsLoadingSpecializations(true);
-			try {
-				const response = await specializationsApi.getAll();
-				setSpecializations(response);
-			} catch (error) {
-				toast.error("Ошибка", {
-					description: "Не удалось загрузить список специализаций",
-				});
-			} finally {
-				setIsLoadingSpecializations(false);
-			}
-		};
-		fetchSpecializations();
-	}, []);
-
 	// Обновляем форму при изменении doctor
 	useEffect(() => {
 		if (doctor && open) {
-			const photoUrl = doctor.photo
-				? doctor.photo.startsWith("data:image")
-					? doctor.photo
-					: `data:image/jpeg;base64,${doctor.photo}`
-				: null;
+			const photoUrl = doctorPhotoImgSrc(
+				doctor.photo,
+				import.meta.env.VITE_DIRECTUS_URL,
+			);
 			form.reset({
 				lastName: doctor.user.lastName || "",
 				firstName: doctor.user.firstName || "",
@@ -156,34 +125,37 @@ export function EditDoctorDialog({
 		}
 	}, [doctor, open]);
 
-	const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
-		if (file) {
-			// Проверяем размер файла (максимум 5MB)
-			if (file.size > 5 * 1024 * 1024) {
-				toast.error("Ошибка", {
-					description: "Размер файла не должен превышать 5MB",
-				});
-				return;
-			}
-			// Проверяем тип файла
-			if (!file.type.startsWith("image/")) {
-				toast.error("Ошибка", {
-					description: "Выберите изображение",
-				});
-				return;
-			}
-			const reader = new FileReader();
-			reader.onloadend = () => {
-				const base64String = reader.result as string;
-				form.setValue("photo", base64String);
-				setPhotoPreview(base64String);
-			};
-			reader.readAsDataURL(file);
+		e.target.value = "";
+		if (!file) return;
+		if (file.size > 5 * 1024 * 1024) {
+			toast.error("Ошибка", {
+				description: "Размер файла не должен превышать 5MB",
+			});
+			return;
+		}
+		if (!file.type.startsWith("image/")) {
+			toast.error("Ошибка", {
+				description: "Выберите изображение",
+			});
+			return;
+		}
+		setIsPhotoUploading(true);
+		try {
+			const fileId = await uploadImageToDirectus(file);
+			form.setValue("photo", fileId);
+			setPhotoPreview(directusAssetPreviewUrl(fileId));
+			toast.success("Фото загружено в Directus");
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			toast.error("Не удалось загрузить фото", { description: msg });
+		} finally {
+			setIsPhotoUploading(false);
 		}
 	};
 
-	const onSubmit = async (values: z.infer<typeof formSchema>) => {
+	const onSubmit = async (values: EditDoctorFormValues) => {
 		setIsSubmitting(true);
 		try {
 			// Формируем displayName из ФИО
@@ -216,7 +188,10 @@ export function EditDoctorDialog({
 					}),
 			};
 
-			await doctorsApi.update(doctor?.id || 0, requestData);
+			await updateDoctor({
+				id: doctor?.id || 0,
+				body: requestData,
+			}).unwrap();
 			toast.success("Данные сохранены", {
 				description: "Информация о враче успешно обновлена",
 			});
@@ -319,7 +294,7 @@ export function EditDoctorDialog({
 							<FormField
 								control={form.control}
 								name="phone"
-								render={({ field }) => (
+								render={() => (
 									<FormItem>
 										<FormLabel>Телефон</FormLabel>
 										<FormControl>
@@ -421,12 +396,14 @@ export function EditDoctorDialog({
 												type="file"
 												accept="image/*"
 												onChange={handlePhotoChange}
+												disabled={isPhotoUploading}
 												className="light-input"
 											/>
 										</div>
 									</FormControl>
 									<p className="text-xs text-slate-500">
-										Максимальный размер файла: 5MB
+										Загрузка в Directus (нужны VITE_DIRECTUS_URL и VITE_DIRECTUS_STATIC_TOKEN).
+										Максимум 5MB.
 									</p>
 									<FormMessage />
 								</FormItem>

@@ -1,7 +1,6 @@
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { patientsApi, usersApi } from "@/api/client";
 import { Patient } from "@/api/types";
 import { BookAppointmentForm } from "@/components/book-appointment-form";
 import { Button } from "@/components/ui/button";
@@ -9,51 +8,52 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import {
+	useLazyGetPatientByIdQuery,
+	useLazyGetPatientsQuery,
+} from "@/store/api/apiSlice";
+
 export default function BookAppointmentPage() {
 	const { user } = useAuth();
 	const navigate = useNavigate();
 	const [fullUser, setFullUser] = useState<Patient | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
+	const [fetchPatient] = useLazyGetPatientByIdQuery();
+	const [fetchPatients] = useLazyGetPatientsQuery();
 
 	useEffect(() => {
-		fetchFullUser();
-	}, [user]);
+		const fetchFullUser = async () => {
+			if (!user?.id) {
+				setIsLoading(false);
+				return;
+			}
 
-	const fetchFullUser = async () => {
-		if (!user?.id) {
-			setIsLoading(false);
-			return;
-		}
-		
-		try {
-			// Получаем полную информацию о пользователе
-			const fullUserData = await usersApi.getMe();
-			
-			// Если у пользователя есть patientId, получаем данные пациента
-			if (fullUserData.patientId) {
-				const patient = await patientsApi.getById(fullUserData.patientId);
-				setFullUser(patient);
-			} else {
-				toast.error("Пользователь не является пациентом");
-				navigate("/patient");
-			}
-		} catch (error) {
-			console.error("Ошибка при загрузке данных пациента:", error);
-			toast.error("Ошибка при загрузке данных");
-			// Fallback: пытаемся найти пациента через getAll
 			try {
-				const allPatients = await patientsApi.getAll();
-				const patient = allPatients.find(p => p.user.id === user.id);
-				if (patient) {
+				if (user.patientId) {
+					const patient = await fetchPatient(user.patientId).unwrap();
 					setFullUser(patient);
+				} else {
+					toast.error("Пользователь не является пациентом");
+					navigate("/patient");
 				}
-			} catch (fallbackError) {
-				console.error("Ошибка при загрузке пациентов:", fallbackError);
+			} catch (error) {
+				console.error("Ошибка при загрузке данных пациента:", error);
+				toast.error("Ошибка при загрузке данных");
+				try {
+					const allPatients = await fetchPatients().unwrap();
+					const patient = allPatients.find((p) => p.user.id === user.id);
+					if (patient) {
+						setFullUser(patient);
+					}
+				} catch (fallbackError) {
+					console.error("Ошибка при загрузке пациентов:", fallbackError);
+				}
+			} finally {
+				setIsLoading(false);
 			}
-		} finally {
-			setIsLoading(false);
-		}
-	};
+		};
+		void fetchFullUser();
+	}, [user, navigate, fetchPatient, fetchPatients]);
 
 	return (
 		<div className="flex flex-1 flex-col">

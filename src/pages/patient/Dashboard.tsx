@@ -1,7 +1,6 @@
 import { CalendarDays, Clock, FileText, Loader2, User } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { appointmentsApi, usersApi } from "@/api/client";
 import { Appointment } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,48 +11,36 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState } from "react";
+import { formatClinicServicePriceFromFields } from "@/lib/format-clinic-service-price";
+import { useMemo } from "react";
+
+import {
+	useCancelAppointmentMutation,
+	useGetAppointmentsByPatientQuery,
+} from "@/store/api/apiSlice";
 
 export default function PatientDashboard() {
 	const { user } = useAuth();
-	const [upcomingAppointments, setUpcomingAppointments] = useState<
-		Appointment[] | null
-	>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
+	const patientId = user?.patientId;
+	const { data: allAppointments = [], isLoading, isError, refetch } = useGetAppointmentsByPatientQuery(
+		patientId!,
+		{ skip: !patientId }
+	);
 
-	useEffect(() => {
-		fetchUpcomingAppointments();
-	}, [user]);
+	const error = !user?.patientId
+		? "Пользователь не является пациентом"
+		: isError
+			? "Ошибка при загрузке приёмов"
+			: null;
 
-	const fetchUpcomingAppointments = async () => {
-		try {
-			setIsLoading(true);
-			setError(null);
-			if (user?.id) {
-				// Получаем данные пользователя для получения patientId
-				const userData = await usersApi.getMe();
-				if (!userData.patientId) {
-					setError("Пользователь не является пациентом");
-					setUpcomingAppointments([]);
-					return;
-				}
-				// Получаем все записи пациента и фильтруем предстоящие
-				const allAppointments = await appointmentsApi.getByPatient(userData.patientId);
-				const now = new Date();
-				const upcoming = allAppointments.filter(apt => {
-					const aptDate = new Date(apt.startTime);
-					return aptDate > now && apt.status === "scheduled";
-				});
-				setUpcomingAppointments(upcoming);
-			}
-		} catch (err) {
-			setError("Ошибка при загрузке приёмов");
-			console.error("Error fetching appointments:", err);
-		} finally {
-			setIsLoading(false);
-		}
-	};
+	const upcomingAppointments = useMemo(() => {
+		if (!patientId) return [] as Appointment[];
+		const now = new Date();
+		return allAppointments.filter((apt) => {
+			const aptDate = new Date(apt.startTime);
+			return aptDate > now && apt.status === "scheduled";
+		});
+	}, [allAppointments, patientId]);
 
 	return (
 		<div className="flex flex-1  flex-col">
@@ -98,12 +85,16 @@ export default function PatientDashboard() {
 												"Не указан",
 											appointment_date: appointment.startTime.split('T')[0],
 											appointment_time: new Date(appointment.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+											service_name: appointment.service?.name ?? null,
+											service_price_label: appointment.service
+												? formatClinicServicePriceFromFields(appointment.service.price)
+												: null,
 										};
 										return (
 											<AppointmentCard
 												key={appointment.id}
 												appointment={appointmentData as any}
-												onCancel={() => fetchUpcomingAppointments()}
+												onCancel={() => void refetch()}
 											/>
 										);
 									})}
@@ -219,12 +210,15 @@ export function AppointmentCard({
 		office_number: string;
 		appointment_date: string;
 		appointment_time: string;
+		service_name?: string | null;
+		service_price_label?: string | null;
 	};
 	onCancel?: () => void;
 }) {
+	const [cancelAppointmentMut] = useCancelAppointmentMutation();
 	const cancelAppointment = async (appointmentId: number) => {
 		try {
-			await appointmentsApi.cancel(appointmentId);
+			await cancelAppointmentMut({ id: appointmentId, body: {} }).unwrap();
 			onCancel?.();
 		} catch (err) {
 			console.error("Error canceling appointment:", err);
@@ -245,6 +239,28 @@ export function AppointmentCard({
 						<p className="text-slate-600">
 							Кабинет {appointment.office_number}
 						</p>
+						{appointment.service_name ? (
+							<p className="mt-1 text-sm text-slate-600">
+								Услуга:{" "}
+								<span className="font-medium text-foreground">
+									{appointment.service_name}
+								</span>
+								{appointment.service_price_label &&
+								appointment.service_price_label !== "—" ? (
+									<>
+										{" "}
+										<span className="font-semibold text-foreground">
+											{appointment.service_price_label}
+										</span>
+									</>
+								) : (
+									<span className="text-muted-foreground">
+										{" "}
+										(стоимость уточняйте в клинике)
+									</span>
+								)}
+							</p>
+						) : null}
 					</div>
 				</div>
 				<div className="flex flex-col items-start md:items-end">

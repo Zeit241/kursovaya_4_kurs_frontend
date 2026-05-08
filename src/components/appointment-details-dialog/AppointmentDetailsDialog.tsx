@@ -1,5 +1,10 @@
-import axiosInstance, { appointmentsApi, doctorsApi, patientsApi, reviewsApi, usersApi } from "@/api/client";
-import { Appointment, Doctor, Patient, Review } from "@/api/types";
+import {
+	type UpdateAppointmentRequest,
+	Appointment,
+	Doctor,
+	Patient,
+	Review,
+} from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,46 +36,31 @@ import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import * as z from "zod";
 
-const formSchema = z.object({
-	status: z.enum([
-		"scheduled",
-		"confirmed",
-		"in_progress",
-		"completed",
-		"cancelled",
-		"no_show",
-	]),
-	diagnosis: z.string().optional(),
-});
+import {
+	useCreateReviewMutation,
+	useGetDoctorByIdQuery,
+	useGetPatientByIdQuery,
+	useLazyGetReviewByAppointmentQuery,
+	useSendAppointmentNotificationMutation,
+	useUpdateAppointmentMutation,
+	useUpdateReviewMutation,
+} from "@/store/api/apiSlice";
 
-const reviewFormSchema = z.object({
-	rating: z.number().min(1, "Выберите оценку").max(5, "Оценка должна быть от 1 до 5"),
-	reviewText: z.string().optional(),
-});
-
-type FormValues = z.infer<typeof formSchema>;
-
-const statusLabels: Record<
-	Appointment["status"],
-	string
-> = {
-	scheduled: "Запланирован",
-	confirmed: "Подтвержден",
-	in_progress: "В процессе",
-	completed: "Завершен",
-	cancelled: "Отменен",
-	no_show: "Неявка",
-	available: "Доступен",
-};
-
-interface ExtendedAppointment extends Appointment {
-	diagnosis?: string | null;
-}
+import {
+	diagnosisToFormString,
+	formatDiagnosisDisplay,
+	statusLabels,
+} from "./appointment-display-helpers";
+import {
+	formSchema,
+	reviewFormSchema,
+	type FormValues,
+	type ReviewFormValues,
+} from "./appointment-form-schemas";
 
 interface AppointmentDetailsDialogProps {
-	appointment: ExtendedAppointment | null;
+	appointment: Appointment | null;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onUpdate: () => void;
@@ -84,9 +74,20 @@ export function AppointmentDetailsDialog({
 	onUpdate,
 	isPatientView = false,
 }: AppointmentDetailsDialogProps) {
+	const [updateAppointment] = useUpdateAppointmentMutation();
+	const [sendNotification] = useSendAppointmentNotificationMutation();
+	const [updateReview] = useUpdateReviewMutation();
+	const [createReview] = useCreateReviewMutation();
+	const [getReviewByAppointment] = useLazyGetReviewByAppointmentQuery();
+
+	const docId = appointment?.doctorId;
+	const patId = appointment?.patientId;
+	const { data: doctorData } = useGetDoctorByIdQuery(docId!, { skip: !open || !docId });
+	const { data: patientData } = useGetPatientByIdQuery(patId!, { skip: !open || !patId });
+
 	const [isEditing, setIsEditing] = useState(false);
 	const [localAppointment, setLocalAppointment] =
-		useState<ExtendedAppointment | null>(appointment);
+		useState<Appointment | null>(appointment);
 	const [isSendingNotification, setIsSendingNotification] = useState(false);
 	const [doctor, setDoctor] = useState<Doctor | null>(null);
 	const [patient, setPatient] = useState<Patient | null>(null);
@@ -95,6 +96,14 @@ export function AppointmentDetailsDialog({
 	const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 	const [showReviewForm, setShowReviewForm] = useState(false);
 
+	useEffect(() => {
+		setDoctor(doctorData ?? null);
+	}, [doctorData]);
+
+	useEffect(() => {
+		setPatient(patientData ?? null);
+	}, [patientData]);
+
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
@@ -102,11 +111,11 @@ export function AppointmentDetailsDialog({
 			status:
 				(localAppointment?.status as FormValues["status"]) ||
 				"scheduled",
-			diagnosis: localAppointment?.diagnosis || "",
+			diagnosis: diagnosisToFormString(localAppointment?.diagnosis),
 		},
 	});
 
-	const reviewForm = useForm<z.infer<typeof reviewFormSchema>>({
+	const reviewForm = useForm<ReviewFormValues>({
 		resolver: zodResolver(reviewFormSchema),
 		defaultValues: {
 			rating: 5,
@@ -114,19 +123,21 @@ export function AppointmentDetailsDialog({
 		},
 	});
 
-	// Загрузка отзыва
 	const loadReview = async (appointmentId: number) => {
 		setIsLoadingReview(true);
 		try {
-			const reviewData = await reviewsApi.getByAppointment(appointmentId);
+			const reviewData = await getReviewByAppointment(appointmentId).unwrap();
 			setReview(reviewData);
 			reviewForm.reset({
 				rating: reviewData.rating,
 				reviewText: reviewData.reviewText || "",
 			});
-		} catch (error: any) {
-			// Если отзыв не найден (404), это нормально
-			if (error.response?.status !== 404) {
+		} catch (error: unknown) {
+			const st =
+				error && typeof error === "object" && "status" in error
+					? (error as { status?: number }).status
+					: undefined;
+			if (st !== 404) {
 				console.error("Error loading review:", error);
 			}
 			setReview(null);
@@ -141,30 +152,11 @@ export function AppointmentDetailsDialog({
 			form.reset({
 				status:
 					(appointment.status as FormValues["status"]) || "scheduled",
-				diagnosis: appointment.diagnosis || "",
+				diagnosis: diagnosisToFormString(appointment.diagnosis),
 			});
-			
-			// Загружаем данные врача и пациента
-			const loadDoctorAndPatient = async () => {
-				try {
-					if (appointment.doctorId) {
-						const doctorData = await doctorsApi.getById(appointment.doctorId);
-						setDoctor(doctorData);
-					}
-					if (appointment.patientId) {
-						const patientData = await patientsApi.getById(appointment.patientId);
-						setPatient(patientData);
-					}
-				} catch (error) {
-					console.error("Error loading doctor/patient data:", error);
-				}
-			};
-			
-			loadDoctorAndPatient();
 
-			// Если это вид пациента и приём завершен, загружаем отзыв
 			if (isPatientView && appointment.status === "completed") {
-				loadReview(appointment.id);
+				void loadReview(appointment.id);
 			}
 		} else if (!open) {
 			// Сбрасываем состояние при закрытии диалога
@@ -208,19 +200,16 @@ export function AppointmentDetailsDialog({
 		if (!localAppointment) return;
 
 		try {
-			const updatedAppointment = await appointmentsApi.update(
-				localAppointment.id,
-				values
-			);
+			const body: UpdateAppointmentRequest = {
+				status: values.status,
+				diagnosis: values.diagnosis?.trim() || null,
+			};
+			const updatedAppointment = await updateAppointment({
+				id: localAppointment.id,
+				body,
+			}).unwrap();
 			setLocalAppointment((prev) =>
-				prev
-					? {
-							...prev,
-							...updatedAppointment,
-							diagnosis: values.diagnosis ?? prev.diagnosis,
-							status: values.status,
-					  }
-					: prev
+				prev ? { ...prev, ...updatedAppointment } : prev
 			);
 			toast.success("Прием успешно обновлен");
 			setIsEditing(false);
@@ -236,9 +225,7 @@ export function AppointmentDetailsDialog({
 
 		setIsSendingNotification(true);
 		try {
-			await axiosInstance.post(
-				`/appointments/${localAppointment.id}/send_notification`
-			);
+			await sendNotification(localAppointment.id).unwrap();
 			toast.success("Уведомление успешно отправлено");
 		} catch (error) {
 			toast.error("Ошибка при отправке уведомления");
@@ -248,21 +235,22 @@ export function AppointmentDetailsDialog({
 		}
 	};
 
-	const handleSubmitReview = async (values: z.infer<typeof reviewFormSchema>) => {
+	const handleSubmitReview = async (values: ReviewFormValues) => {
 		if (!localAppointment || !localAppointment.doctorId || !localAppointment.patientId) return;
 
 		setIsSubmittingReview(true);
 		try {
 			if (review) {
-				// Обновляем существующий отзыв
-				await reviewsApi.update(review.id, {
-					rating: values.rating,
-					reviewText: values.reviewText || "",
-				});
+				await updateReview({
+					id: review.id,
+					body: {
+						rating: values.rating,
+						reviewText: values.reviewText || "",
+					},
+				}).unwrap();
 				toast.success("Отзыв успешно обновлен");
 			} else {
-				// Создаем новый отзыв
-				await reviewsApi.create({
+				await createReview({
 					appointment: {
 						id: localAppointment.id,
 					},
@@ -274,7 +262,7 @@ export function AppointmentDetailsDialog({
 					},
 					rating: values.rating,
 					reviewText: values.reviewText || "",
-				});
+				}).unwrap();
 				toast.success("Отзыв успешно добавлен");
 			}
 			setShowReviewForm(false);
@@ -386,7 +374,7 @@ export function AppointmentDetailsDialog({
 							<div>
 								<h4 className="font-medium text-sm">Диагноз</h4>
 								<p className="mt-1">
-									{localAppointment.diagnosis ||
+									{formatDiagnosisDisplay(localAppointment.diagnosis) ||
 										"Нет диагноза"}
 								</p>
 							</div>

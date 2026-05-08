@@ -8,7 +8,7 @@ import { z } from "zod";
 // @ts-ignore
 import { transliterate as tr } from "transliteration";
 
-import { patientsApi } from "@/api/client";
+import { useCreatePatientMutation } from "@/store/api/apiSlice";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -118,6 +118,7 @@ const StepTwo = ({ credentials }: { credentials: GeneratedCredentials }) => {
 };
 
 export default function NewPatientPage() {
+	const [createPatient] = useCreatePatientMutation();
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [currentStep, setCurrentStep] = useState(1);
 	const [credentials, setCredentials] = useState<GeneratedCredentials | null>(null);
@@ -155,7 +156,7 @@ export default function NewPatientPage() {
 
 		try {
 			// Создаем пациента с данными пользователя
-			await patientsApi.create({
+			await createPatient({
 				user: {
 					email: data.email || "",
 					phone: data.phone,
@@ -166,7 +167,7 @@ export default function NewPatientPage() {
 				birthDate: data.birthDate,
 				gender: data.gender === "male" ? 1 : 2,
 				insuranceNumber: data.policyNumber,
-			});
+			}).unwrap();
 
 			toast.success("Пациент добавлен", {
 				description: "Новый пациент успешно добавлен в систему",

@@ -1,7 +1,6 @@
 "use client";
 
-import { appointmentsApi, doctorsApi, patientsApi } from "@/api/client";
-import { Appointment, Doctor, Patient } from "@/api/types";
+import type { AppointmentsQueryParams, Appointment } from "@/api/types";
 import { AppointmentDetailsDialog } from "@/components/appointment-details-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,8 +24,12 @@ import {
 } from "@/components/ui/table";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useEffect, useMemo, useState } from "react";
+import {
+	useGetAppointmentsQuery,
+	useGetDoctorsQuery,
+	useGetPatientsQuery,
+} from "@/store/api/apiSlice";
 
 const statusLabels: Record<string, string> = {
 	scheduled: "Запланирован",
@@ -38,16 +41,42 @@ const statusLabels: Record<string, string> = {
 	available: "Доступно",
 };
 
+const defaultFilters = {
+	date: "",
+	doctor: "all",
+	status: "all",
+};
+
 export default function AppointmentsPage() {
-	const [appointments, setAppointments] = useState<Appointment[]>([]);
-	const [doctors, setDoctors] = useState<Doctor[]>([]);
-	const [patients, setPatients] = useState<Patient[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [filters, setFilters] = useState({
-		date: "",
-		doctor: "all",
-		status: "all",
-	});
+	const { data: doctors = [] } = useGetDoctorsQuery();
+	const { data: patients = [] } = useGetPatientsQuery();
+	const [filters, setFilters] = useState(defaultFilters);
+	const [appliedFilters, setAppliedFilters] = useState(defaultFilters);
+
+	const appointmentParams = useMemo((): AppointmentsQueryParams => {
+		const p: AppointmentsQueryParams = {};
+		if (appliedFilters.doctor && appliedFilters.doctor !== "all") {
+			p.doctorId = Number(appliedFilters.doctor);
+		}
+		if (appliedFilters.date) {
+			p.date = appliedFilters.date;
+		}
+		if (appliedFilters.status && appliedFilters.status !== "all") {
+			p.status = appliedFilters.status;
+		}
+		return p;
+	}, [appliedFilters]);
+
+	const {
+		data: appointmentsRaw = [],
+		isLoading: loading,
+		refetch,
+	} = useGetAppointmentsQuery(appointmentParams);
+
+	const appointmentsList = useMemo(
+		() => appointmentsRaw.filter((appointment) => appointment.patientId != null),
+		[appointmentsRaw]
+	);
 	const [selectedAppointment, setSelectedAppointment] =
 		useState<Appointment | null>(null);
 	const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
@@ -58,86 +87,23 @@ export default function AppointmentsPage() {
 	const [totalCount, setTotalCount] = useState(0);
 	const itemsPerPage = 10;
 
-	// Загрузка списка врачей
-	const loadDoctors = async () => {
-		try {
-			const response = await doctorsApi.getAll();
-			setDoctors(Array.isArray(response) ? response : []);
-		} catch (error) {
-			console.error("Ошибка при загрузке списка врачей:", error);
-			toast.error("Не удалось загрузить список врачей");
-			setDoctors([]);
-		}
-	};
-
-	// Загрузка списка пациентов
-	const loadPatients = async () => {
-		try {
-			const response = await patientsApi.getAll();
-			setPatients(Array.isArray(response) ? response : []);
-		} catch (error) {
-			console.error("Ошибка при загрузке списка пациентов:", error);
-			setPatients([]);
-		}
-	};
-
-	// Загрузка приемов
-	const loadAppointments = async (page: number = 1) => {
-		try {
-			setLoading(true);
-			const params: any = {};
-
-			if (filters.doctor && filters.doctor !== "all") {
-				params.doctorId = Number(filters.doctor);
-			}
-			if (filters.date) {
-				// backend ожидает формат YYYY-MM-DD
-				params.date = filters.date;
-			}
-			if (filters.status && filters.status !== "all") {
-				params.status = filters.status;
-			}
-
-			const response = await appointmentsApi.getAll(params);
-			let appointmentsList = Array.isArray(response) ? response : [];
-
-			// Не показываем записи без пациента
-			appointmentsList = appointmentsList.filter(
-				(appointment) => appointment.patientId != null
-			);
-
-			// Пагинация на фронтенде
-			const startIndex = (page - 1) * itemsPerPage;
-			const paginated = appointmentsList.slice(
-				startIndex,
-				startIndex + itemsPerPage
-			);
-
-			setAppointments(paginated);
-			setTotalCount(appointmentsList.length);
-			setTotalPages(Math.max(1, Math.ceil(appointmentsList.length / itemsPerPage)));
-			setCurrentPage(page);
-		} catch (error) {
-			console.error("Ошибка при загрузке приемов:", error);
-			toast.error("Не удалось загрузить список приемов");
-		} finally {
-			setLoading(false);
-		}
-	};
+	const appointments = useMemo(() => {
+		const startIndex = (currentPage - 1) * itemsPerPage;
+		return appointmentsList.slice(startIndex, startIndex + itemsPerPage);
+	}, [appointmentsList, currentPage]);
 
 	useEffect(() => {
-		loadDoctors();
-		loadPatients();
-		loadAppointments(currentPage);
-	}, [currentPage]);
+		setTotalCount(appointmentsList.length);
+		setTotalPages(Math.max(1, Math.ceil(appointmentsList.length / itemsPerPage)));
+	}, [appointmentsList.length, itemsPerPage]);
 
 	const handleFilterChange = (field: string, value: string) => {
 		setFilters((prev) => ({ ...prev, [field]: value }));
 	};
 
 	const applyFilters = () => {
-		setCurrentPage(1); // Сбрасываем на первую страницу при применении фильтров
-		loadAppointments(1);
+		setAppliedFilters({ ...filters });
+		setCurrentPage(1);
 	};
 
 	if (loading) {
@@ -388,7 +354,7 @@ export default function AppointmentsPage() {
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => loadAppointments(currentPage - 1)}
+										onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
 										disabled={currentPage === 1}
 										className="border-slate-700"
 									>
@@ -400,7 +366,7 @@ export default function AppointmentsPage() {
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => loadAppointments(currentPage + 1)}
+										onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
 										disabled={currentPage === totalPages}
 										className="border-slate-700"
 									>
@@ -417,7 +383,7 @@ export default function AppointmentsPage() {
 				appointment={selectedAppointment as any}
 				open={isDetailsDialogOpen}
 				onOpenChange={setIsDetailsDialogOpen}
-				onUpdate={loadAppointments}
+				onUpdate={() => void refetch()}
 			/>
 		</div>
 	);

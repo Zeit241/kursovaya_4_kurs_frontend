@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { Link, useSearchParams } from "react-router-dom";
 import * as z from "zod";
 
-import { authApi } from "@/api/client";
+import { useRequestPasswordResetMutation, useResetPasswordMutation } from "@/store/api/apiSlice";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -47,6 +47,8 @@ type RequestResetFormData = z.infer<typeof requestResetSchema>;
 type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
 export default function ForgotPasswordPage() {
+	const [requestPasswordReset] = useRequestPasswordResetMutation();
+	const [resetPasswordMut] = useResetPasswordMutation();
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSubmitted, setIsSubmitted] = useState(false);
 	const [searchParams] = useSearchParams();
@@ -66,7 +68,7 @@ export default function ForgotPasswordPage() {
 		setIsLoading(true);
 
 		try {
-			await authApi.requestPasswordReset(data.email);
+			await requestPasswordReset({ email: data.email }).unwrap();
 			toast.success("Инструкции отправлены", {
 				description:
 					"Проверьте вашу электронную почту для сброса пароля",
@@ -85,7 +87,7 @@ export default function ForgotPasswordPage() {
 		setIsLoading(true);
 
 		try {
-			await authApi.resetPassword(token!, data.password);
+			await resetPasswordMut({ token: token!, password: data.password }).unwrap();
 			toast.success("Пароль успешно изменен", {
 				description: "Теперь вы можете войти с новым паролем",
 			});

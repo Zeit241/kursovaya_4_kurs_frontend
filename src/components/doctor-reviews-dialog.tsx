@@ -1,4 +1,3 @@
-import { reviewsApi } from "@/api/client";
 import { Review } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,16 +18,19 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Loader2, Star, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
+
+import { useDeleteReviewMutation, useGetReviewsByDoctorQuery } from "@/store/api/apiSlice";
 
 interface DoctorReviewsDialogProps {
 	doctorId: number;
 	doctorName: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	canDelete?: boolean;
 }
 
 export function DoctorReviewsDialog({
@@ -36,46 +38,28 @@ export function DoctorReviewsDialog({
 	doctorName,
 	open,
 	onOpenChange,
+	canDelete = true,
 }: DoctorReviewsDialogProps) {
-	const [reviews, setReviews] = useState<Review[]>([]);
-	const [isLoading, setIsLoading] = useState(false);
+	const {
+		data: reviews = [],
+		isLoading,
+		refetch,
+	} = useGetReviewsByDoctorQuery(doctorId, { skip: !open || !doctorId });
+	const [deleteReview] = useDeleteReviewMutation();
 	const [reviewToDelete, setReviewToDelete] = useState<Review | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
-
-	useEffect(() => {
-		if (open && doctorId) {
-			loadReviews();
-		} else if (!open) {
-			setReviews([]);
-		}
-	}, [open, doctorId]);
-
-	const loadReviews = async () => {
-		setIsLoading(true);
-		try {
-			const reviewsData = await reviewsApi.getByDoctor(doctorId);
-			setReviews(reviewsData);
-		} catch (error) {
-			console.error("Error loading reviews:", error);
-			toast.error("Ошибка", {
-				description: "Не удалось загрузить отзывы",
-			});
-		} finally {
-			setIsLoading(false);
-		}
-	};
 
 	const handleDeleteReview = async () => {
 		if (!reviewToDelete) return;
 
 		setIsDeleting(true);
 		try {
-			await reviewsApi.delete(reviewToDelete.id);
+			await deleteReview(reviewToDelete.id).unwrap();
 			toast.success("Отзыв удален", {
 				description: "Отзыв успешно удален",
 			});
 			setReviewToDelete(null);
-			await loadReviews();
+			void refetch();
 		} catch (error) {
 			console.error("Error deleting review:", error);
 			toast.error("Ошибка", {
@@ -139,14 +123,16 @@ export function DoctorReviewsDialog({
 												{ locale: ru }
 											)}
 										</span>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setReviewToDelete(review)}
-											className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-										>
-											<Trash2 className="h-4 w-4" />
-										</Button>
+										{canDelete && (
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => setReviewToDelete(review)}
+												className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
+										)}
 									</div>
 								</div>
 								{review.reviewText && (

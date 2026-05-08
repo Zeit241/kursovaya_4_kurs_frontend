@@ -118,3 +118,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .nav-item {
+    @apply text-foreground/90 hover:text-foreground rounded-md px-2 py-1 text-sm font-medium transition-colors hover:bg-accent;
+  }
+  .nav-item-active {
+    @apply bg-accent text-accent-foreground;
+  }
+}

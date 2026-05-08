@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { BarChart, FileSpreadsheet, FileText } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import {
 	Bar,
@@ -13,10 +13,24 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
-import { z } from "zod";
 
-import { doctorsApi, reportsApi } from "@/api/client";
-import type { DailyReport, ReportAppointment } from "@/api/types";
+import type { DailyReport, DailyReportAppointmentRow } from "@/api/types";
+import {
+	useGetDoctorsQuery,
+	useLazyExportDailyExcelByDoctorQuery,
+	useLazyExportDailyExcelQuery,
+	useLazyExportDailyPdfByDoctorQuery,
+	useLazyExportDailyPdfQuery,
+	useLazyExportRangeExcelByDoctorQuery,
+	useLazyExportRangeExcelQuery,
+	useLazyExportRangePdfByDoctorQuery,
+	useLazyExportRangePdfQuery,
+	useLazyGetDailyReportByDoctorQuery,
+	useLazyGetDailyReportQuery,
+	useLazyGetRangeReportByDoctorQuery,
+	useLazyGetRangeReportQuery,
+} from "@/store/api/apiSlice";
+
 import { DateRangePicker } from "@/components/date-range-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,30 +50,34 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-interface ChartDataItem {
-	name: string;
-	count: number;
-}
-
-const reportFormSchema = z.object({
-	reportType: z.enum(["appointments"]),
-	statisticsType: z.string().optional(),
-	filterType: z.string().optional(),
-	filterValue: z.string().optional(),
-	doctorId: z.string().optional(),
-	dateRange: z.object({
-		from: z.date(),
-		to: z.date(),
-	}),
-});
-
-type ReportFormValues = z.infer<typeof reportFormSchema>;
+import {
+	reportFormSchema,
+	type ReportFormValues,
+} from "./report-form-schema";
+import {
+	getStatusLabel,
+	prepareChartData,
+	type ChartDataItem,
+} from "./statistics-chart";
 
 export default function StatisticsPage() {
+	const { data: doctors = [] } = useGetDoctorsQuery();
+	const [fetchDailyReport] = useLazyGetDailyReportQuery();
+	const [fetchDailyReportByDoctor] = useLazyGetDailyReportByDoctorQuery();
+	const [fetchRangeReport] = useLazyGetRangeReportQuery();
+	const [fetchRangeReportByDoctor] = useLazyGetRangeReportByDoctorQuery();
+	const [exportDailyExcel] = useLazyExportDailyExcelQuery();
+	const [exportDailyExcelByDoctor] = useLazyExportDailyExcelByDoctorQuery();
+	const [exportRangeExcel] = useLazyExportRangeExcelQuery();
+	const [exportRangeExcelByDoctor] = useLazyExportRangeExcelByDoctorQuery();
+	const [exportDailyPdf] = useLazyExportDailyPdfQuery();
+	const [exportDailyPdfByDoctor] = useLazyExportDailyPdfByDoctorQuery();
+	const [exportRangePdf] = useLazyExportRangePdfQuery();
+	const [exportRangePdfByDoctor] = useLazyExportRangePdfByDoctorQuery();
+
 	const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 	const [reportData, setReportData] = useState<DailyReport | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
-	const [doctors, setDoctors] = useState<any[]>([]);
 	const [chartData, setChartData] = useState<ChartDataItem[]>([]);
 
 	const form = useForm<ReportFormValues>({
@@ -76,21 +94,6 @@ export default function StatisticsPage() {
 			},
 		},
 	});
-
-	// Загрузка списка врачей при монтировании компонента
-	useEffect(() => {
-		const fetchData = async () => {
-			try {
-				const doctorsResponse = await doctorsApi.getAll();
-				setDoctors(doctorsResponse);
-			} catch (error) {
-				console.error("Ошибка при загрузке данных:", error);
-				toast.error("Не удалось загрузить данные");
-			}
-		};
-
-		fetchData();
-	}, []);
 
 	// Получаем доступные типы статистики
 	const getStatisticsTypes = () => {
@@ -148,106 +151,41 @@ export default function StatisticsPage() {
 			if (isSingleDay) {
 				// Отчет за один день
 				if (doctorId) {
-					report = await reportsApi.getDailyByDoctor(doctorId, startDate);
+					report = await fetchDailyReportByDoctor({ doctorId, date: startDate }).unwrap();
 				} else {
-					report = await reportsApi.getDaily(startDate);
+					report = await fetchDailyReport(startDate).unwrap();
 				}
 			} else {
 				// Отчет за период
 				if (doctorId) {
-					report = await reportsApi.getRangeByDoctor(doctorId, startDate, endDate);
+					report = await fetchRangeReportByDoctor({
+						doctorId,
+						startDate,
+						endDate,
+					}).unwrap();
 				} else {
-					report = await reportsApi.getRange(startDate, endDate);
+					report = await fetchRangeReport({ startDate, endDate }).unwrap();
 				}
 			}
 
 			setReportData(report);
 
 			// Подготовка данных для графика
-			const chartData = prepareChartData(
-				report.appointments,
+			const nextChart = prepareChartData(
+				report.appointments ?? [],
 				values.statisticsType || "all"
 			);
-			setChartData(chartData);
-		} catch (error: any) {
+			setChartData(nextChart);
+		} catch (error: unknown) {
 			console.error("Ошибка при загрузке данных:", error);
-			const errorMessage = error.response?.data?.error || "Не удалось загрузить данные";
-			toast.error(errorMessage);
+			const errorMessage =
+				error && typeof error === "object" && "data" in error
+					? String((error as { data?: { error?: string } }).data?.error)
+					: "Не удалось загрузить данные";
+			toast.error(errorMessage || "Не удалось загрузить данные");
 		} finally {
 			setIsLoading(false);
 		}
-	};
-
-	const prepareChartData = (
-		appointments: ReportAppointment[],
-		statisticsType: string
-	): ChartDataItem[] => {
-		switch (statisticsType) {
-			case "status":
-				// Группировка по статусам
-				return Object.entries(
-					appointments.reduce((acc: Record<string, number>, item) => {
-						const status = item.status;
-						if (!acc[status]) {
-							acc[status] = 0;
-						}
-						acc[status]++;
-						return acc;
-					}, {})
-				).map(
-					([status, count]): ChartDataItem => ({
-						name: getStatusLabel(status),
-						count: Number(count),
-					})
-				);
-			case "doctors":
-				// Группировка по врачам
-				return Object.entries(
-					appointments.reduce((acc: Record<string, number>, item) => {
-						const doctorName = item.doctorDisplayName;
-						if (!acc[doctorName]) {
-							acc[doctorName] = 0;
-						}
-						acc[doctorName]++;
-						return acc;
-					}, {})
-				).map(
-					([doctor, count]): ChartDataItem => ({
-						name: doctor,
-						count: Number(count),
-					})
-				);
-			default:
-				// По умолчанию группируем по врачам
-				return Object.entries(
-					appointments.reduce((acc: Record<string, number>, item) => {
-						const doctorName = item.doctorDisplayName;
-						if (!acc[doctorName]) {
-							acc[doctorName] = 0;
-						}
-						acc[doctorName]++;
-						return acc;
-					}, {})
-				).map(
-					([doctor, count]): ChartDataItem => ({
-						name: doctor,
-						count: Number(count),
-					})
-				);
-		}
-	};
-
-	const getStatusLabel = (status: string): string => {
-		const statusLabels: Record<string, string> = {
-			scheduled: "Запланировано",
-			confirmed: "Подтверждено",
-			in_progress: "В процессе",
-			completed: "Завершено",
-			cancelled: "Отменено",
-			no_show: "Неявка",
-			available: "Доступно",
-		};
-		return statusLabels[status] || status;
 	};
 
 	const downloadFile = (blob: Blob, filename: string) => {
@@ -284,28 +222,31 @@ export default function StatisticsPage() {
 
 			if (isSingleDay) {
 				if (doctorId) {
-					blob = await reportsApi.exportDailyExcelByDoctor(doctorId, startDate);
+					blob = await exportDailyExcelByDoctor({ doctorId, date: startDate }).unwrap();
 					filename = `report_doctor${doctorId}_${startDate}.xlsx`;
 				} else {
-					blob = await reportsApi.exportDailyExcel(startDate);
+					blob = await exportDailyExcel(startDate).unwrap();
 					filename = `report_${startDate}.xlsx`;
 				}
 			} else {
 				if (doctorId) {
-					blob = await reportsApi.exportRangeExcelByDoctor(doctorId, startDate, endDate);
+					blob = await exportRangeExcelByDoctor({
+						doctorId,
+						startDate,
+						endDate,
+					}).unwrap();
 					filename = `report_doctor${doctorId}_${startDate}_${endDate}.xlsx`;
 				} else {
-					blob = await reportsApi.exportRangeExcel(startDate, endDate);
+					blob = await exportRangeExcel({ startDate, endDate }).unwrap();
 					filename = `report_${startDate}_${endDate}.xlsx`;
 				}
 			}
 
 			downloadFile(blob, filename);
 			toast.success("Отчет Excel успешно скачан");
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error("Ошибка при генерации Excel отчета:", error);
-			const errorMessage = error.response?.data?.error || "Не удалось сгенерировать отчет";
-			toast.error(errorMessage);
+			toast.error("Не удалось сгенерировать отчет");
 		} finally {
 			setIsGeneratingReport(false);
 		}
@@ -334,28 +275,31 @@ export default function StatisticsPage() {
 
 			if (isSingleDay) {
 				if (doctorId) {
-					blob = await reportsApi.exportDailyPdfByDoctor(doctorId, startDate);
+					blob = await exportDailyPdfByDoctor({ doctorId, date: startDate }).unwrap();
 					filename = `report_doctor${doctorId}_${startDate}.pdf`;
 				} else {
-					blob = await reportsApi.exportDailyPdf(startDate);
+					blob = await exportDailyPdf(startDate).unwrap();
 					filename = `report_${startDate}.pdf`;
 				}
 			} else {
 				if (doctorId) {
-					blob = await reportsApi.exportRangePdfByDoctor(doctorId, startDate, endDate);
+					blob = await exportRangePdfByDoctor({
+						doctorId,
+						startDate,
+						endDate,
+					}).unwrap();
 					filename = `report_doctor${doctorId}_${startDate}_${endDate}.pdf`;
 				} else {
-					blob = await reportsApi.exportRangePdf(startDate, endDate);
+					blob = await exportRangePdf({ startDate, endDate }).unwrap();
 					filename = `report_${startDate}_${endDate}.pdf`;
 				}
 			}
 
 			downloadFile(blob, filename);
 			toast.success("Отчет PDF успешно скачан");
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error("Ошибка при генерации PDF отчета:", error);
-			const errorMessage = error.response?.data?.error || "Не удалось сгенерировать отчет";
-			toast.error(errorMessage);
+			toast.error("Не удалось сгенерировать отчет");
 		} finally {
 			setIsGeneratingReport(false);
 		}
@@ -614,23 +558,23 @@ export default function StatisticsPage() {
 								<div className="grid grid-cols-2 md:grid-cols-5 gap-4">
 									<div>
 										<p className="text-sm text-muted-foreground">Всего записей</p>
-										<p className="text-2xl font-bold">{reportData.totalAppointments}</p>
+										<p className="text-2xl font-bold">{reportData.totalAppointments ?? 0}</p>
 									</div>
 									<div>
 										<p className="text-sm text-muted-foreground">Запланировано</p>
-										<p className="text-2xl font-bold">{reportData.scheduledCount}</p>
+										<p className="text-2xl font-bold">{reportData.scheduledCount ?? 0}</p>
 									</div>
 									<div>
 										<p className="text-sm text-muted-foreground">Завершено</p>
-										<p className="text-2xl font-bold text-green-600">{reportData.completedCount}</p>
+										<p className="text-2xl font-bold text-green-600">{reportData.completedCount ?? 0}</p>
 									</div>
 									<div>
 										<p className="text-sm text-muted-foreground">Отменено</p>
-										<p className="text-2xl font-bold text-red-600">{reportData.cancelledCount}</p>
+										<p className="text-2xl font-bold text-red-600">{reportData.cancelledCount ?? 0}</p>
 									</div>
 									<div>
 										<p className="text-sm text-muted-foreground">Неявки</p>
-										<p className="text-2xl font-bold text-orange-600">{reportData.noShowCount}</p>
+										<p className="text-2xl font-bold text-orange-600">{reportData.noShowCount ?? 0}</p>
 									</div>
 								</div>
 							</CardContent>
@@ -676,7 +620,7 @@ export default function StatisticsPage() {
 					)}
 
 					{/* Таблица данных */}
-					{reportData && reportData.appointments.length > 0 && (
+					{reportData && (reportData.appointments?.length ?? 0) > 0 && (
 						<Card className="mt-8">
 							<CardHeader>
 								<div className="flex items-center justify-between">
@@ -719,17 +663,19 @@ export default function StatisticsPage() {
 												</tr>
 											</thead>
 											<tbody>
-												{reportData.appointments.map(
-													(appointment) => (
+												{(reportData.appointments ?? []).map(
+													(appointment: DailyReportAppointmentRow) => (
 														<tr
-															key={appointment.appointmentId}
+															key={appointment.appointmentId ?? appointment.startTime}
 															className="border-b hover:bg-slate-50"
 														>
 															<td className="p-2">
-																{format(
-																	new Date(appointment.startTime),
-																	"dd.MM.yyyy HH:mm"
-																)}
+																{appointment.startTime
+																	? format(
+																			new Date(appointment.startTime),
+																			"dd.MM.yyyy HH:mm"
+																		)
+																	: "—"}
 															</td>
 															<td className="p-2">
 																{appointment.doctorDisplayName}
@@ -755,11 +701,15 @@ export default function StatisticsPage() {
 																			: "bg-blue-100 text-blue-800"
 																	}`}
 																>
-																	{getStatusLabel(appointment.status)}
+																	{getStatusLabel(appointment.status ?? "")}
 																</span>
 															</td>
 															<td className="p-2">
-																{appointment.diagnosis || "-"}
+																{typeof appointment.diagnosis === "object" &&
+																appointment.diagnosis != null &&
+																"code" in appointment.diagnosis
+																	? `${(appointment.diagnosis as { code?: string; name?: string }).code ?? ""} ${(appointment.diagnosis as { name?: string }).name ?? ""}`.trim() || "-"
+																	: (appointment.diagnosis as string) || "-"}
 															</td>
 														</tr>
 													)

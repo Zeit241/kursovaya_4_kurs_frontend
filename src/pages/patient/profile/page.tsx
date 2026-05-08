@@ -1,15 +1,13 @@
 "use client";
 
-import { patientsApi, usersApi } from "@/api/client";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, FileText, User as UserIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { PatternFormat } from "react-number-format";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { z } from "zod";
 
-import { Patient, User } from "@/api/types";
+import { User } from "@/api/types";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,61 +30,39 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
-const profileSchema = z.object({
-	last_name: z.string().min(1, "Пожалуйста, введите фамилию"),
-	first_name: z.string().min(1, "Пожалуйста, введите имя"),
-	middle_name: z.string().optional(),
-	birth_date: z
-		.string()
-		.min(1, "Пожалуйста, выберите дату рождения")
-		.refine((date) => {
-			const birthDate = new Date(date);
-			const today = new Date();
-			return birthDate < today;
-		}, "Дата рождения не может быть в будущем"),
-	gender: z.enum(["male", "female"], {
-		required_error: "Пожалуйста, выберите пол",
-	}),
-	phone: z.string().min(1, "Пожалуйста, введите номер телефона"),
-	insurance_number: z.string().optional(),
-});
+import {
+	useGetPatientByIdQuery,
+	useUpdatePatientMutation,
+} from "@/store/api/apiSlice";
 
-type ProfileFormValues = z.infer<typeof profileSchema>;
+import {
+	patientProfileSchema,
+	type PatientProfileFormValues,
+} from "./patient-profile-schema";
 
 export default function PatientProfilePage() {
-	const { user } = useAuth();
-	const [isLoading, setIsLoading] = useState(false);
-	const [fullUser, setFullUser] = useState<User | null>(null);
-	const [patient, setPatient] = useState<Patient | null>(null);
-
-	const fetchFullUser = async () => {
-		if (!user) return;
-		setIsLoading(true);
-		try {
-			// Получаем текущего пользователя с данными пациента
-			const userData = await usersApi.getMe();
-			setFullUser(userData);
-			if (userData.patient) {
-				// Получаем полные данные пациента
-				const patientData = await patientsApi.getById(userData.patient.id);
-				setPatient(patientData);
-			}
-		} catch (error) {
-			console.error("Ошибка при загрузке профиля:", error);
-			toast.error("Не удалось загрузить данные профиля");
-		} finally {
-			setIsLoading(false);
-		}
-	};
+	const { user, refreshUserFromPatient } = useAuth();
+	const patientId = user?.patientId;
+	const {
+		data: patient,
+		isLoading: loadingPatient,
+		isError,
+		refetch,
+	} = useGetPatientByIdQuery(patientId!, { skip: !patientId });
+	const [updatePatient, { isLoading: updating }] = useUpdatePatientMutation();
+	const fullUser: User | null = patient?.user ?? null;
+	const isLoading = loadingPatient || updating;
 
 	useEffect(() => {
-		fetchFullUser();
-	}, [user]);
+		if (isError) {
+			toast.error("Не удалось загрузить данные профиля");
+		}
+	}, [isError]);
 
-	const form = useForm<ProfileFormValues>({
-		resolver: zodResolver(profileSchema),
+	const form = useForm<PatientProfileFormValues>({
+		resolver: zodResolver(patientProfileSchema),
 		defaultValues: {
 			last_name: "",
 			first_name: "",
@@ -113,37 +89,39 @@ export default function PatientProfilePage() {
 		}
 	}, [fullUser, patient, form]);
 
-	const onSubmit = async (data: ProfileFormValues) => {
+	const onSubmit = async (data: PatientProfileFormValues) => {
 		if (!patient || !fullUser) {
 			toast.error("Данные профиля не загружены");
 			return;
 		}
 
 		try {
-			setIsLoading(true);
-
-			// Обновляем данные пациента (включая данные пользователя)
-			await patientsApi.update(patient.id, {
-				user: {
-					phone: data.phone,
-					firstName: data.first_name,
-					lastName: data.last_name,
-					middleName: data.middle_name || undefined,
+			const updated = await updatePatient({
+				id: patient.id,
+				body: {
+					user: {
+						phone: data.phone,
+						firstName: data.first_name,
+						lastName: data.last_name,
+						middleName: data.middle_name || undefined,
+					},
+					birthDate: data.birth_date,
+					gender: data.gender === "male" ? 1 : 2,
+					insuranceNumber: data.insurance_number || undefined,
 				},
-				birthDate: data.birth_date,
-				gender: data.gender === "male" ? 1 : 2,
-				insuranceNumber: data.insurance_number || undefined,
-			});
+			}).unwrap();
+
+			refreshUserFromPatient(updated);
+			void refetch();
 
 			toast.success("Профиль успешно обновлен");
-			// Обновляем данные после сохранения
-			await fetchFullUser();
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error("Ошибка при обновлении профиля:", error);
-			const errorMessage = error.response?.data?.message || "Не удалось обновить профиль";
-			toast.error(errorMessage);
-		} finally {
-			setIsLoading(false);
+			const errorMessage =
+				error && typeof error === "object" && "data" in error
+					? String((error as { data?: { message?: string } }).data?.message)
+					: "Не удалось обновить профиль";
+			toast.error(errorMessage || "Не удалось обновить профиль");
 		}
 	};
 

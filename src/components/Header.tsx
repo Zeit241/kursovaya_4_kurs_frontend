@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Menu, X } from "lucide-react";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -19,9 +20,9 @@ export const Navigation: React.FC = () => {
 	};
 
 	return (
-		<header className="sticky top-0 z-10 border-b border-slate-800 backdrop-blur-md">
+		<header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-md">
 			<div className="container mx-auto flex h-16 items-center justify-between py-4 px-4">
-				<h1 className="text-xl md:text-2xl font-bold">
+				<h1 className="text-xl md:text-2xl font-bold text-foreground">
 					Клиника Менеджмент
 				</h1>
 
@@ -56,6 +57,18 @@ export const Navigation: React.FC = () => {
 										Пациенты
 									</Link>
 									<Link
+										to="/admin/categories"
+										className="nav-item"
+									>
+										Категории
+									</Link>
+									<Link
+										to="/admin/services"
+										className="nav-item"
+									>
+										Услуги
+									</Link>
+									<Link
 										to="/admin/appointments"
 										className="nav-item nav-item-active"
 									>
@@ -66,6 +79,15 @@ export const Navigation: React.FC = () => {
 										className="nav-item"
 									>
 										Статистика
+									</Link>
+								</>
+							) : user.role === "doctor" ? (
+								<>
+									<Link
+										to="/doctor/appointments"
+										className="nav-item nav-item-active"
+									>
+										Мои приёмы
 									</Link>
 								</>
 							) : (
@@ -93,23 +115,27 @@ export const Navigation: React.FC = () => {
 									</Link>
 								</>
 							)}
-							<Button onClick={handleLogout}>Выйти</Button>
+							<div className="flex items-center gap-2">
+								<ThemeToggle />
+								<Button onClick={handleLogout}>Выйти</Button>
+							</div>
 						</>
 					) : (
-						<>
+						<div className="flex items-center gap-2">
+							<ThemeToggle />
 							<Link to="/auth/login" className="nav-item">
 								Вход
 							</Link>
 							<Link to="/auth/register" className="nav-item">
 								Регистрация
 							</Link>
-						</>
+						</div>
 					)}
 				</nav>
 
 				{/* Мобильное меню */}
 				{isMobileMenuOpen && (
-					<nav className="absolute top-16 left-0 right-0 bg-background border-b border-slate-800 p-4 md:hidden">
+					<nav className="absolute top-16 left-0 right-0 bg-background border-b border-border p-4 md:hidden">
 						<div className="flex flex-col gap-4">
 							{user ? (
 								<>
@@ -137,6 +163,20 @@ export const Navigation: React.FC = () => {
 												Пациенты
 											</Link>
 											<Link
+												to="/admin/categories"
+												className="nav-item"
+												onClick={toggleMobileMenu}
+											>
+												Категории
+											</Link>
+											<Link
+												to="/admin/services"
+												className="nav-item"
+												onClick={toggleMobileMenu}
+											>
+												Услуги
+											</Link>
+											<Link
 												to="/admin/appointments"
 												className="nav-item"
 												onClick={toggleMobileMenu}
@@ -151,6 +191,14 @@ export const Navigation: React.FC = () => {
 												Статистика
 											</Link>
 										</>
+									) : user.role === "doctor" ? (
+										<Link
+											to="/doctor/appointments"
+											className="nav-item"
+											onClick={toggleMobileMenu}
+										>
+											Мои приёмы
+										</Link>
 									) : (
 										<>
 											<Link
@@ -183,12 +231,16 @@ export const Navigation: React.FC = () => {
 											</Link>
 										</>
 									)}
-									<Button onClick={handleLogout}>
-										Выйти
-									</Button>
+									<div className="flex flex-col gap-2">
+										<ThemeToggle />
+										<Button onClick={handleLogout}>
+											Выйти
+										</Button>
+									</div>
 								</>
 							) : (
-								<>
+								<div className="flex flex-col gap-2">
+									<ThemeToggle />
 									<Link
 										to="/auth/login"
 										className="nav-item"
@@ -203,7 +255,7 @@ export const Navigation: React.FC = () => {
 									>
 										Регистрация
 									</Link>
-								</>
+								</div>
 							)}
 						</div>
 					</nav>

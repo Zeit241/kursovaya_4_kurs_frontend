@@ -3,9 +3,8 @@ import type React from "react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { PatternFormat } from "react-number-format";
-import * as z from "zod";
 
-import { patientsApi } from "@/api/client";
+import { useUpdatePatientMutation } from "@/store/api/apiSlice";
 import { Patient } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,25 +28,10 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 
-const formSchema = z.object({
-	lastName: z.string().min(2, "Фамилия должна содержать минимум 2 символа"),
-	firstName: z.string().min(2, "Имя должно содержать минимум 2 символа"),
-	middleName: z.string().optional(),
-	birthDate: z.string()
-		.min(1, "Пожалуйста, укажите дату рождения")
-		.refine((date) => new Date(date) <= new Date(), {
-			message: "Дата рождения не может быть в будущем"
-		}),
-	gender: z.enum(["male", "female"], {
-		required_error: "Пожалуйста, выберите пол",
-	}),
-	phone: z.string().min(10, "Введите корректный номер телефона"),
-	email: z.string().email("Введите корректный email").min(1, "Email обязателен для заполнения"),
-	policyNumber: z
-		.string()
-		.min(1, "Пожалуйста, укажите номер полиса ОМС")
-		.length(16, "Номер полиса ОМС должен содержать 16 цифр"),
-});
+import {
+	editPatientFormSchema,
+	type EditPatientFormValues,
+} from "./edit-patient-form-schema";
 
 interface EditPatientDialogProps {
 	patient: Patient;
@@ -62,13 +46,14 @@ export function EditPatientDialog({
 	open: controlledOpen,
 	onOpenChange,
 }: EditPatientDialogProps) {
+	const [updatePatient] = useUpdatePatientMutation();
 	const [internalOpen, setInternalOpen] = useState(false);
 	const open = controlledOpen ?? internalOpen;
 	const setOpen = onOpenChange ?? setInternalOpen;
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const form = useForm<z.infer<typeof formSchema>>({
-		resolver: zodResolver(formSchema),
+	const form = useForm<EditPatientFormValues>({
+		resolver: zodResolver(editPatientFormSchema),
 		defaultValues: {
 			lastName: patient?.user.lastName || "",
 			firstName: patient?.user.firstName || "",
@@ -81,22 +66,25 @@ export function EditPatientDialog({
 		},
 	});
 
-	const onSubmit = async (values: z.infer<typeof formSchema>) => {
+	const onSubmit = async (values: EditPatientFormValues) => {
 		setIsSubmitting(true);
 		try {
 			// Обновляем пациента с данными пользователя
-			await patientsApi.update(patient.id, {
-				user: {
-					email: values.email || patient.user.email,
-					phone: values.phone,
-					firstName: values.firstName,
-					lastName: values.lastName,
-					middleName: values.middleName,
+			await updatePatient({
+				id: patient.id,
+				body: {
+					user: {
+						email: values.email || patient.user.email,
+						phone: values.phone,
+						firstName: values.firstName,
+						lastName: values.lastName,
+						middleName: values.middleName,
+					},
+					birthDate: values.birthDate,
+					gender: values.gender === "male" ? 1 : 2,
+					insuranceNumber: values.policyNumber,
 				},
-				birthDate: values.birthDate,
-				gender: values.gender === "male" ? 1 : 2,
-				insuranceNumber: values.policyNumber,
-			});
+			}).unwrap();
 
 			toast.success("Данные сохранены", {
 				description: "Информация о пациенте успешно обновлена",

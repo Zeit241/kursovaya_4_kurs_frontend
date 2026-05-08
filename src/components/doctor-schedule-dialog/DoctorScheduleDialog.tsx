@@ -2,8 +2,6 @@ import type React from "react";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-	addDays,
-	compareAsc,
 	format,
 	isAfter,
 	isBefore,
@@ -14,13 +12,20 @@ import {
 } from "date-fns";
 import { ru } from "date-fns/locale";
 import { CalendarIcon, Clock, Loader2, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import * as z from "zod";
 
-import { roomsApi, schedulesApi } from "@/api/client";
-import { Room, Schedule } from "@/api/types";
+import {
+	useCreateScheduleMutation,
+	useDeleteScheduleMutation,
+	useGetRoomsQuery,
+	useGetSchedulesByDoctorQuery,
+} from "@/store/api/apiSlice";
+
+import { Room } from "@/api/types";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
+import { scheduleFormSchema, type ScheduleFormData } from "./schedule-form-schema";
+import { sortWorkingHoursSchedules } from "./sort-working-hours-schedules";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -61,83 +66,6 @@ interface DoctorScheduleDialogProps {
 	onDelete?: (scheduleId: string) => void;
 }
 
-const scheduleFormSchema = z
-	.object({
-		singleDate: z.date({
-			required_error: "Выберите дату",
-			invalid_type_error: "Некорректная дата",
-		}),
-		roomId: z.string().optional(),
-		startTime: z.string({
-			required_error: "Укажите время начала работы",
-		}),
-		endTime: z.string({
-			required_error: "Укажите время окончания работы",
-		}),
-		appointmentDuration: z.string({
-			required_error: "Укажите длительность приема",
-		}),
-	})
-	.superRefine((data, ctx) => {
-		// Проверка времени
-		const [startHour, startMinute] = data.startTime.split(":").map(Number);
-		const [endHour, endMinute] = data.endTime.split(":").map(Number);
-		const startInMinutes = startHour * 60 + startMinute;
-		const endInMinutes = endHour * 60 + endMinute;
-
-		// Проверка времени начала для текущей даты
-		const now = new Date();
-		const currentHour = now.getHours();
-		const currentMinute = now.getMinutes();
-		const currentTimeInMinutes = currentHour * 60 + currentMinute;
-
-		const isToday = (date: Date | undefined) => {
-			if (!date) return false;
-			const today = new Date();
-			return (
-				date.getDate() === today.getDate() &&
-				date.getMonth() === today.getMonth() &&
-				date.getFullYear() === today.getFullYear()
-			);
-		};
-
-		if (isToday(data.singleDate)) {
-			if (startInMinutes <= currentTimeInMinutes) {
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					message:
-						"Время начала не может быть меньше или равно текущему времени",
-					path: ["startTime"],
-				});
-			}
-		}
-
-		if (endInMinutes <= startInMinutes) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				message: "Время окончания должно быть позже времени начала",
-				path: ["endTime"],
-			});
-		}
-
-		// Проверка даты
-		if (!data.singleDate) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				message: "Выберите дату",
-				path: ["singleDate"],
-			});
-		} else if (data.singleDate < startOfDay(new Date())) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				message: "Дата не может быть меньше текущей",
-				path: ["singleDate"],
-			});
-		}
-	});
-
-type ScheduleFormData = z.infer<typeof scheduleFormSchema>;
-
 export function DoctorScheduleDialog({
 	doctorId,
 	doctorName,
@@ -148,16 +76,28 @@ export function DoctorScheduleDialog({
 	const [internalOpen, setInternalOpen] = useState(false);
 	const open = controlledOpen ?? internalOpen;
 	const setOpen = onOpenChange ?? setInternalOpen;
+	const doctorIdNum = Number.parseInt(doctorId, 10);
+	const {
+		data: schedulesRaw = [],
+		isLoading,
+		refetch: refetchSchedules,
+	} = useGetSchedulesByDoctorQuery(doctorIdNum, {
+		skip: Number.isNaN(doctorIdNum),
+	});
+	const { data: rooms = [], isLoading: isLoadingRooms, refetch: refetchRooms } =
+		useGetRoomsQuery();
+	const [createSchedule] = useCreateScheduleMutation();
+	const [deleteSchedule] = useDeleteScheduleMutation();
+
+	const activeWorkingHours = useMemo(
+		() => sortWorkingHoursSchedules(schedulesRaw),
+		[schedulesRaw]
+	);
+
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [activeTab, setActiveTab] = useState("manage");
 	const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-	const [activeWorkingHours, setActiveWorkingHours] = useState<
-		Schedule[]
-	>([]);
-	const [isLoading, setIsLoading] = useState(true);
 	const [deletingIds, setDeletingIds] = useState<number[]>([]);
-	const [rooms, setRooms] = useState<Room[]>([]);
-	const [isLoadingRooms, setIsLoadingRooms] = useState(true);
 	const [isCreateRoomDialogOpen, setIsCreateRoomDialogOpen] = useState(false);
 
 	const form = useForm<ScheduleFormData>({
@@ -175,24 +115,6 @@ export function DoctorScheduleDialog({
 		setValue,
 		formState: { errors },
 	} = form;
-
-	// Функция для конвертации минут в формат HH:mm
-	const convertMinutesToTimeFormat = (minutes: string): string => {
-		try {
-			const mins = parseInt(minutes);
-			if (isNaN(mins)) {
-				throw new Error("Некорректное значение минут");
-			}
-			const hours = Math.floor(mins / 60);
-			const remainingMinutes = mins % 60;
-			return `${hours.toString().padStart(2, "0")}:${remainingMinutes
-				.toString()
-				.padStart(2, "0")}`;
-		} catch (error) {
-			console.error("Ошибка при конвертации времени:", error);
-			return "00:00";
-		}
-	};
 
 	// Расчет временных слотов на основе данных формы
 	const calculateTimeSlots = () => {
@@ -257,38 +179,6 @@ export function DoctorScheduleDialog({
 		}
 	};
 
-	// Функция для сортировки расписаний
-	const sortWorkingHours = (schedules: Schedule[]): Schedule[] => {
-		return [...schedules].sort((a, b) => {
-			// Пропускаем записи без даты
-			if (!a.dateAt) return 1;
-			if (!b.dateAt) return -1;
-			
-			try {
-				const dateA = parseISO(a.dateAt);
-				const dateB = parseISO(b.dateAt);
-
-				const isPastA =
-					isBefore(startOfDay(dateA), startOfDay(new Date())) ||
-					isEqual(startOfDay(dateA), startOfDay(new Date()));
-				const isPastB =
-					isBefore(startOfDay(dateB), startOfDay(new Date())) ||
-					isEqual(startOfDay(dateB), startOfDay(new Date()));
-
-				// Если один прошел или текущий, а другой нет
-				if (isPastA !== isPastB) {
-					return isPastA ? 1 : -1;
-				}
-
-				// Если оба не прошли - сначала ближайшие
-				return compareAsc(dateA, dateB);
-			} catch (error) {
-				console.error("Error parsing dates in sort:", error);
-				return 0;
-			}
-		});
-	};
-
 	// Функция для получения всех дат, на которые уже есть расписание
 	const getDisabledDates = () => {
 		const disabledDates = new Set<string>();
@@ -312,50 +202,13 @@ export function DoctorScheduleDialog({
 		);
 	};
 
-	// Вынесем функцию fetchActiveWorkingHours из useEffect, чтобы её можно было использовать в других местах
-	const fetchActiveWorkingHours = async () => {
-		setIsLoading(true);
-		try {
-			const schedules = await schedulesApi.getByDoctor(parseInt(doctorId));
-			setActiveWorkingHours(sortWorkingHours(schedules));
-		} catch (error) {
-			console.error(error);
-			toast.error("Ошибка при загрузке расписания", {
-				description: "Пожалуйста, обновите страницу",
-			});
-		} finally {
-			setIsLoading(false);
-		}
-	};
-
-	// Загрузка кабинетов
-	const fetchRooms = async () => {
-		setIsLoadingRooms(true);
-		try {
-			const roomsList = await roomsApi.getAll();
-			setRooms(roomsList);
-		} catch (error) {
-			console.error(error);
-			toast.error("Ошибка при загрузке кабинетов", {
-				description: "Пожалуйста, обновите страницу",
-			});
-		} finally {
-			setIsLoadingRooms(false);
-		}
-	};
-
-	useEffect(() => {
-		fetchActiveWorkingHours();
-		fetchRooms();
-	}, [doctorId]);
-
 	const formatDateIfExists = (date: Date | undefined | null): string => {
 		if (!date) return "Выберите дату";
 		return format(date, "dd MMMM yyyy", { locale: ru });
 	};
 
 	const handleRoomCreated = (room: Room) => {
-		setRooms((prev) => [...prev, room]);
+		void refetchRooms();
 		setValue("roomId", room.id.toString());
 	};
 
@@ -498,8 +351,8 @@ export function DoctorScheduleDialog({
 				slotDurationMinutes: parseInt(data.appointmentDuration),
 			};
 
-			await schedulesApi.create(scheduleData);
-			await fetchActiveWorkingHours();
+			await createSchedule(scheduleData).unwrap();
+			void refetchSchedules();
 
 			toast.success("Расписание создано", {
 				description: "Расписание врача успешно сохранено",
@@ -521,10 +374,9 @@ export function DoctorScheduleDialog({
 	const handleDelete = async (scheduleId: number) => {
 		try {
 			setDeletingIds((prev) => [...prev, scheduleId]);
-			await schedulesApi.delete(scheduleId);
+			await deleteSchedule(scheduleId).unwrap();
 
-			// Обновляем список расписаний через запрос
-			await fetchActiveWorkingHours();
+			void refetchSchedules();
 
 			toast.success("Расписание удалено", {
 				description: "Расписание врача успешно удалено",
@@ -735,11 +587,11 @@ export function DoctorScheduleDialog({
 														"singleDate"
 													)}
 													onSelect={(date) => {
-														setValue(
-															"singleDate",
-															date ||
-																undefined
-														);
+														if (date)
+															setValue(
+																"singleDate",
+																date
+															);
 														setIsCalendarOpen(
 															false
 														);

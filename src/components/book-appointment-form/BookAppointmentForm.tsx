@@ -1,15 +1,21 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format, parse } from "date-fns";
-import { Check, Loader2, Star, User } from "lucide-react";
-import { useEffect, useState } from "react";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+import { Calendar as CalendarIcon, Check, Loader2, Star, User } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { z } from "zod";
 
-import { appointmentsApi, doctorsApi, specializationsApi } from "@/api/client";
-import { Patient, Doctor, AvailableAppointmentSlot, Specialization } from "@/api/types";
+import { useBookAppointmentMutation } from "@/store/api/apiSlice";
+import type { ClinicService, Patient } from "@/api/types";
+import { bookingFormSchema, type BookingFormValues } from "./booking-form-schema";
+import { useBookingFormData } from "./use-booking-form-data";
 import { DoctorReviewsDialog } from "@/components/doctor-reviews-dialog";
+import { ServiceBookingPicker } from "@/components/service-booking-picker";
+import { Calendar } from "@/components/ui/calendar";
 import { useAuth } from "@/contexts/AuthContext";
+import { doctorPhotoImgSrc } from "@/lib/doctorPhotoSrc";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -26,7 +32,6 @@ import {
 	FormLabel,
 	FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -37,21 +42,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-
-const bookingFormSchema = z.object({
-	step: z.number().min(1).max(2),
-	specialty: z.string().min(1, "Выберите специальность"),
-	doctor: z.string().min(1, "Выберите врача"),
-	date: z.string().min(1, "Выберите дату"),
-	time: z.string().min(1, "Выберите время"),
-	slot_id: z.number().optional(),
-	reason: z.string().optional(),
-	notificationType: z.enum(["email", "none"], {
-		required_error: "Выберите способ уведомления",
-	}),
-});
-
-type BookingFormValues = z.infer<typeof bookingFormSchema>;
+import { formatClinicServicePriceFromFields } from "@/lib/format-clinic-service-price";
 
 interface BookAppointmentFormProps {
 	patient: Patient;
@@ -62,12 +53,15 @@ export function BookAppointmentForm({
 	patient,
 	onClose,
 }: BookAppointmentFormProps) {
+	const [bookAppointment] = useBookAppointmentMutation();
 	const { user } = useAuth();
 	const form = useForm<BookingFormValues>({
 		resolver: zodResolver(bookingFormSchema),
 		defaultValues: {
 			step: 1,
+			searchMode: "by_specialty",
 			specialty: "",
+			service: "",
 			doctor: "",
 			date: "",
 			time: "",
@@ -75,117 +69,52 @@ export function BookAppointmentForm({
 		},
 	});
 
-	const [specialties, setSpecialties] = useState<Specialization[]>([]);
-	const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
-	const [doctors, setDoctors] = useState<Doctor[]>([]);
-	const [slots, setSlots] = useState<AvailableAppointmentSlot[]>([]);
-	const [isLoadingSpecialties, setIsLoadingSpecialties] = useState(false);
-	const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
-	const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [selectedDoctorForReviews, setSelectedDoctorForReviews] = useState<{
-		id: number;
-		name: string;
-	} | null>(null);
-	const [isReviewsDialogOpen, setIsReviewsDialogOpen] = useState(false);
+	const {
+		specialties,
+		allServicesCatalog,
+		doctorServices,
+		doctors,
+		slots,
+		isLoadingSpecialties,
+		isLoadingDoctors,
+		isLoadingSlots,
+		selectedDoctorForReviews,
+		setSelectedDoctorForReviews,
+		isReviewsDialogOpen,
+		setIsReviewsDialogOpen,
+		availableDates,
+		isLoadingDates,
+		datePickerOpen,
+		setDatePickerOpen,
+		availableDateSet,
+		datePickerContainerRef,
+		step,
+		searchMode,
+		selectedSpecialty,
+		selectedService,
+		selectedDoctor,
+		selectedDate,
+		setSlots,
+		setDoctors,
+		setAvailableDates,
+		handleNextStep,
+		handlePrevStep,
+		slotServiceLabel,
+	} = useBookingFormData(form);
 
-	const step = form.watch("step");
-	const selectedSpecialty = form.watch("specialty");
-	const selectedDoctor = form.watch("doctor");
-	const selectedDate = form.watch("date");
-
-	useEffect(() => {
-		fetchSpecialties();
-	}, []);
-
-	useEffect(() => {
-		if (selectedSpecialty) {
-			fetchDoctors();
-		} else {
-			setDoctors([]);
-		}
-	}, [selectedSpecialty]);
-
-	useEffect(() => {
-		if (selectedDoctor && selectedDate) {
-			fetchSlots();
-			// Сбрасываем выбранное время при изменении врача или даты
-			form.setValue("time", "");
-			form.setValue("slot_id", undefined);
-		} else {
-			setSlots([]);
-		}
-	}, [selectedDoctor, selectedDate]);
-
-	const fetchSpecialties = async () => {
-		setIsLoadingSpecialties(true);
-		try {
-			const response = await specializationsApi.getAll();
-			setSpecialties(response);
-		} finally {
-			setIsLoadingSpecialties(false);
-		}
-	};
-
-	const fetchDoctors = async () => {
-		if (!selectedSpecialty) {
-			setDoctors([]);
-			return;
-		}
-		setIsLoadingDoctors(true);
-		try {
-			// Получаем всех врачей один раз, если еще не загружены
-			let doctorsToFilter = allDoctors;
-			if (allDoctors.length === 0) {
-				const response = await doctorsApi.getAll();
-				setAllDoctors(response);
-				doctorsToFilter = response;
-			}
-			// Фильтруем врачей по выбранной специальности
-			const filteredDoctors = doctorsToFilter.filter((doctor) =>
-				doctor.specializations.some(
-					(spec) => spec.id.toString() === selectedSpecialty
-				)
-			);
-			setDoctors(filteredDoctors);
-		} finally {
-			setIsLoadingDoctors(false);
-		}
-	};
-
-	const fetchSlots = async () => {
-		setIsLoadingSlots(true);
-		try {
-			const response = await appointmentsApi.getAvailable(
-				Number(selectedDoctor),
-				selectedDate
-			);
-			setSlots(response);
-		} finally {
-			setIsLoadingSlots(false);
-		}
-	};
-
-	const handleNextStep = () => {
-		if (
-			step === 1 &&
-			selectedSpecialty &&
-			selectedDoctor &&
-			selectedDate &&
-			form.watch("time")
-		) {
-			form.setValue("step", 2);
-		}
-	};
-
-	const handlePrevStep = () => {
-		if (step === 2) {
-			form.setValue("step", 1);
-		}
-	};
+	const serviceField = form.watch("service");
+	const selectedServiceForSummary = useMemo((): ClinicService | null => {
+		const sid = serviceField?.trim();
+		if (!sid) return null;
+		return (
+			doctorServices.find((s) => String(s.id) === sid) ??
+			allServicesCatalog.find((s) => String(s.id) === sid) ??
+			null
+		);
+	}, [serviceField, doctorServices, allServicesCatalog]);
 
 	const handleSubmit = async (data: BookingFormValues) => {
-		console.log(patient);
 		if (!user?.id || !data.slot_id) {
 			toast.error("Ошибка", {
 				description: "Не удалось определить пользователя или слот",
@@ -204,13 +133,38 @@ export function BookAppointmentForm({
 				return;
 			}
 
-			await appointmentsApi.book({
+			const bookBody: {
+				appointmentId: number;
+				userId: number;
+				serviceId?: number;
+			} = {
 				appointmentId: data.slot_id,
 				userId: patient?.user?.id || user.id,
-			});
+			};
+			if (data.service?.trim()) {
+				bookBody.serviceId = Number(data.service);
+			}
+			await bookAppointment(bookBody).unwrap();
+
+			const sidAfter = data.service?.trim();
+			let successDescription = "Вы успешно записались на прием к врачу";
+			if (sidAfter) {
+				const svc =
+					doctorServices.find((s) => String(s.id) === sidAfter) ??
+					allServicesCatalog.find((s) => String(s.id) === sidAfter) ??
+					null;
+				const svcName = svc?.name ?? `Услуга #${sidAfter}`;
+				const priceLabel = svc
+					? formatClinicServicePriceFromFields(svc.price)
+					: "—";
+				successDescription =
+					priceLabel !== "—"
+						? `Услуга: ${svcName}. Стоимость: ${priceLabel}.`
+						: `Услуга: ${svcName}. Стоимость уточняйте в клинике.`;
+			}
 
 			toast.success("Запись успешно создана", {
-				description: "Вы успешно записались на прием к врачу",
+				description: successDescription,
 			});
 
 			if (onClose) {
@@ -287,48 +241,116 @@ export function BookAppointmentForm({
 							<CardContent className="space-y-6">
 								<FormField
 									control={form.control}
-									name="specialty"
+									name="searchMode"
 									render={({ field }) => (
 										<FormItem>
-											<FormLabel>Специальность</FormLabel>
-											<Select
-												onValueChange={field.onChange}
-												value={field.value}
-												disabled={isLoadingSpecialties}
-											>
-												<FormControl>
-													<SelectTrigger className="light-input hover-scale">
-														<SelectValue
-															placeholder={
-																isLoadingSpecialties
-																	? "Загрузка..."
-																	: "Выберите специальность"
-															}
-														/>
-														{isLoadingSpecialties && (
-															<Loader2 className="h-4 w-4 animate-spin ml-2" />
-														)}
-													</SelectTrigger>
-												</FormControl>
-												<SelectContent>
-													{specialties.map(
-														(specialty) => (
-															<SelectItem
-																key={
-																	specialty.id
-																}
-																value={specialty.id.toString()}
-															>
-																{specialty.name}
-															</SelectItem>
-														)
-													)}
-												</SelectContent>
-											</Select>
+											<FormLabel>Способ поиска</FormLabel>
+											<FormControl>
+												<RadioGroup
+													onValueChange={(v) => {
+														field.onChange(v);
+														form.setValue("specialty", "");
+														form.setValue("service", "");
+														form.setValue("doctor", "");
+														form.setValue("date", "");
+														form.setValue("time", "");
+														form.setValue("slot_id", undefined);
+														setSlots([]);
+														setDoctors([]);
+														setAvailableDates([]);
+													}}
+													value={field.value}
+													className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-6"
+												>
+													<div className="flex items-center space-x-2">
+														<RadioGroupItem value="by_specialty" id="sm_spec" />
+														<Label htmlFor="sm_spec" className="font-normal">
+															По специальности и врачу
+														</Label>
+													</div>
+													<div className="flex items-center space-x-2">
+														<RadioGroupItem value="by_service" id="sm_svc" />
+														<Label htmlFor="sm_svc" className="font-normal">
+															По услуге
+														</Label>
+													</div>
+												</RadioGroup>
+											</FormControl>
 											<FormMessage />
 										</FormItem>
 									)}
 								/>
+
+								{searchMode === "by_specialty" && (
+									<FormField
+										control={form.control}
+										name="specialty"
+										render={({ field }) => (
+											<FormItem>
+												<FormLabel>Специальность</FormLabel>
+												<Select
+													onValueChange={field.onChange}
+													value={field.value}
+													disabled={isLoadingSpecialties}
+												>
+													<FormControl>
+														<SelectTrigger className="light-input hover-scale">
+															<SelectValue
+																placeholder={
+																	isLoadingSpecialties
+																		? "Загрузка..."
+																		: "Выберите специальность"
+																}
+															/>
+															{isLoadingSpecialties && (
+																<Loader2 className="h-4 w-4 animate-spin ml-2" />
+															)}
+														</SelectTrigger>
+													</FormControl>
+													<SelectContent>
+														{specialties.map((specialty) => (
+															<SelectItem
+																key={specialty.id}
+																value={specialty.id.toString()}
+															>
+																{specialty.name}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+												<FormMessage />
+											</FormItem>
+										)}
+									/>
+								)}
+
+								{searchMode === "by_service" && (
+									<FormField
+										control={form.control}
+										name="service"
+										render={({ field }) => (
+											<FormItem>
+												<FormLabel>Услуга</FormLabel>
+												<FormControl>
+													<ServiceBookingPicker
+														services={allServicesCatalog}
+														value={field.value?.trim() ?? ""}
+														onChange={(id) => {
+															field.onChange(id);
+															form.setValue("doctor", "");
+															form.setValue("date", "");
+															form.setValue("time", "");
+															form.setValue("slot_id", undefined);
+															setSlots([]);
+															setAvailableDates([]);
+														}}
+													/>
+												</FormControl>
+												<FormMessage />
+											</FormItem>
+										)}
+									/>
+								)}
 
 								<FormField
 									control={form.control}
@@ -336,26 +358,42 @@ export function BookAppointmentForm({
 									render={({ field }) => (
 										<FormItem>
 											<FormLabel>Врач</FormLabel>
-											{!selectedSpecialty || isLoadingDoctors ? (
+											{searchMode === "by_specialty" && !selectedSpecialty ? (
 												<div className="text-sm text-slate-500 p-4 border border-slate-200 rounded-md">
-													{isLoadingDoctors
-														? "Загрузка врачей..."
-														: "Сначала выберите специальность"}
+													Сначала выберите специальность
+												</div>
+											) : searchMode === "by_service" && !selectedService?.trim() ? (
+												<div className="text-sm text-slate-500 p-4 border border-slate-200 rounded-md">
+													Сначала выберите услугу
+												</div>
+											) : isLoadingDoctors ? (
+												<div className="text-sm text-slate-500 p-4 border border-slate-200 rounded-md">
+													Загрузка врачей...
 												</div>
 											) : doctors.length === 0 ? (
 												<div className="text-sm text-slate-500 p-4 border border-slate-200 rounded-md">
-													Нет доступных врачей по выбранной специальности
+													{searchMode === "by_service"
+														? "Нет врачей с этой услугой (проверьте связи специализация–услуга в БД)"
+														: "Нет доступных врачей по выбранной специальности"}
 												</div>
 											) : (
 												<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 													{doctors.map((doctor) => {
 														const fullName = `${doctor.user.lastName} ${doctor.user.firstName} ${doctor.user.middleName}`.trim();
+														const photoSrc = doctorPhotoImgSrc(doctor.photo);
 														const isSelected = field.value === doctor.id.toString();
 														return (
 															<div
 																key={doctor.id}
 																onClick={() => {
 																	field.onChange(doctor.id.toString());
+																	if (searchMode === "by_specialty") {
+																		form.setValue("service", "");
+																	}
+																	form.setValue("date", "");
+																	form.setValue("time", "");
+																	form.setValue("slot_id", undefined);
+																	setSlots([]);
 																}}
 																className={`relative cursor-pointer rounded-lg border-2 transition-all hover:shadow-lg ${
 																	isSelected
@@ -365,13 +403,9 @@ export function BookAppointmentForm({
 															>
 																<div className="p-4">
 																	<div className="flex items-start gap-3">
-																		{doctor.photo ? (
+																		{photoSrc ? (
 																			<img
-																				src={
-																					doctor.photo.startsWith("data:image")
-																						? doctor.photo
-																						: `data:image/jpeg;base64,${doctor.photo}`
-																				}
+																				src={photoSrc}
 																				alt={fullName}
 																				className="w-16 h-16 rounded-full object-cover border-2 border-slate-200"
 																				onError={(e) => {
@@ -452,25 +486,128 @@ export function BookAppointmentForm({
 									)}
 								/>
 
+								{searchMode === "by_specialty" && selectedDoctor && (
+									<FormField
+										control={form.control}
+										name="service"
+										render={({ field }) => (
+											<FormItem>
+												<FormLabel>Услуга (необязательно)</FormLabel>
+												<Select
+													onValueChange={(v) => {
+														field.onChange(v === "_none_" ? "" : v);
+														form.setValue("time", "");
+														form.setValue("slot_id", undefined);
+													}}
+													value={
+														field.value && field.value.trim() !== ""
+															? field.value
+															: "_none_"
+													}
+												>
+													<FormControl>
+														<SelectTrigger className="light-input hover-scale">
+															<SelectValue placeholder="Без услуги" />
+														</SelectTrigger>
+													</FormControl>
+													<SelectContent>
+														<SelectItem value="_none_">Без услуги</SelectItem>
+														{doctorServices.map((s) => (
+															<SelectItem key={s.id} value={String(s.id)}>
+																{s.name}
+																{s.durationMinutes != null
+																	? ` · ${s.durationMinutes} мин`
+																	: ""}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+												<FormMessage />
+											</FormItem>
+										)}
+									/>
+								)}
+
 								<FormField
 									control={form.control}
 									name="date"
 									render={({ field }) => (
-										<FormItem>
+										<FormItem className="flex flex-col">
 											<FormLabel>Дата</FormLabel>
-											<FormControl>
-												<Input
-													type="date"
-													className="light-input hover-scale"
-													disabled={!selectedDoctor}
-													min={
-														new Date()
-															.toISOString()
-															.split("T")[0]
-													}
-													{...field}
-												/>
-											</FormControl>
+											{/* Без Radix Popover: DismissableLayer конфликтует с DayPicker (закрытие до выбора) */}
+											<div ref={datePickerContainerRef} className="relative w-full">
+												<FormControl>
+													<Button
+														type="button"
+														variant="outline"
+														disabled={!selectedDoctor}
+														aria-expanded={datePickerOpen}
+														onClick={() =>
+															selectedDoctor && setDatePickerOpen((o) => !o)
+														}
+														className={cn(
+															"light-input hover-scale w-full justify-start text-left font-normal",
+															!field.value && "text-muted-foreground"
+														)}
+													>
+														<CalendarIcon className="mr-2 h-4 w-4" />
+														{isLoadingDates ? (
+															<span>Загрузка дат…</span>
+														) : field.value ? (
+															format(
+																new Date(field.value + "T12:00:00"),
+																"d MMMM yyyy",
+																{ locale: ru }
+															)
+														) : (
+															"Выберите дату"
+														)}
+													</Button>
+												</FormControl>
+												{datePickerOpen && selectedDoctor && (
+													<div
+														className="absolute left-0 top-full z-50 mt-1 rounded-md border bg-popover text-popover-foreground shadow-md outline-none"
+														role="dialog"
+														aria-label="Календарь"
+													>
+														{isLoadingDates ? (
+															<div className="flex justify-center py-8 px-12">
+																<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+															</div>
+														) : (
+															<div className="p-3">
+																<Calendar
+																	mode="single"
+																	locale={ru}
+																	selected={
+																		field.value
+																			? new Date(field.value + "T12:00:00")
+																			: undefined
+																	}
+																	onSelect={(d) => {
+																		if (!d) return;
+																		const key = format(d, "yyyy-MM-dd");
+																		if (!availableDateSet.has(key)) return;
+																		field.onChange(key);
+																		setDatePickerOpen(false);
+																	}}
+																	disabled={(d) =>
+																		!availableDateSet.has(format(d, "yyyy-MM-dd"))
+																	}
+																/>
+															</div>
+														)}
+													</div>
+												)}
+											</div>
+											{selectedDoctor &&
+												!isLoadingDates &&
+												availableDates.length === 0 && (
+													<p className="text-sm text-muted-foreground">
+														Нет свободных слотов в ближайшие 90 дней для выбранных
+														параметров.
+													</p>
+												)}
 											<FormMessage />
 										</FormItem>
 									)}
@@ -495,10 +632,10 @@ export function BookAppointmentForm({
 														{slots
 															.filter((slot) => !slot.isBooked)
 															.map((slot) => {
-																const slotTime = new Date(slot.startTime).toLocaleTimeString("ru-RU", {
-																	hour: "2-digit",
-																	minute: "2-digit",
-																});
+																const slotDate = new Date(slot.startTime);
+																const hours = slotDate.getUTCHours().toString().padStart(2, '0');
+																const minutes = slotDate.getUTCMinutes().toString().padStart(2, '0');
+																const slotTime = `${hours}:${minutes}`;
 																return (
 																	<Button
 																		key={slot.id}
@@ -509,17 +646,20 @@ export function BookAppointmentForm({
 																				? "default"
 																				: "outline"
 																		}
-																		className={
+																		className={`h-auto min-h-[3rem] flex-col gap-0.5 py-2 px-1 ${
 																			field.value === slotTime
 																				? "gradient-button"
 																				: "border-slate-300 hover:bg-slate-100 text-slate-800 hover-scale"
-																		}
+																		}`}
 																		onClick={() => {
 																			field.onChange(slotTime);
 																			form.setValue("slot_id", slot.id);
 																		}}
 																	>
-																		{slotTime}
+																		<span className="text-sm font-medium">{slotTime}</span>
+																		<span className="max-w-[5.5rem] truncate text-[10px] leading-tight opacity-80">
+																			{slotServiceLabel(slot)}
+																		</span>
 																	</Button>
 																);
 															})}
@@ -544,7 +684,8 @@ export function BookAppointmentForm({
 										type="button"
 										className="gradient-button"
 										disabled={
-											!selectedSpecialty ||
+											(searchMode === "by_specialty" && !selectedSpecialty) ||
+											(searchMode === "by_service" && !selectedService?.trim()) ||
 											!selectedDoctor ||
 											!selectedDate ||
 											!form.watch("time") ||
@@ -573,19 +714,46 @@ export function BookAppointmentForm({
 									</h3>
 									<div className="mt-4 space-y-2">
 										<div className="flex justify-between">
-											<span className="text-slate-600">
-												Специальность:
-											</span>
+											<span className="text-slate-600">Способ записи:</span>
 											<span>
-												{
-													specialties.find(
-														(s) =>
-															s.id.toString() ===
-															selectedSpecialty
-													)?.name
-												}
+												{searchMode === "by_service"
+													? "По услуге"
+													: "По специальности"}
 											</span>
 										</div>
+										{searchMode === "by_specialty" && (
+											<div className="flex justify-between">
+												<span className="text-slate-600">Специальность:</span>
+												<span>
+													{specialties.find(
+														(s) => s.id.toString() === selectedSpecialty
+													)?.name ?? "—"}
+												</span>
+											</div>
+										)}
+										<div className="flex justify-between">
+											<span className="text-slate-600">Услуга:</span>
+											<span className="text-right max-w-[60%]">
+												{serviceField?.trim()
+													? selectedServiceForSummary?.name ??
+														`#${serviceField.trim()}`
+													: "Без услуги"}
+											</span>
+										</div>
+										{serviceField?.trim() && (
+											<div className="flex justify-between">
+												<span className="text-slate-600">
+													Стоимость услуги:
+												</span>
+												<span className="text-right font-medium max-w-[60%]">
+													{selectedServiceForSummary
+														? formatClinicServicePriceFromFields(
+																selectedServiceForSummary.price
+															)
+														: "—"}
+												</span>
+											</div>
+										)}
 										<div className="flex justify-between">
 											<span className="text-slate-600">
 												Врач:
@@ -731,6 +899,7 @@ export function BookAppointmentForm({
 					doctorName={selectedDoctorForReviews.name}
 					open={isReviewsDialogOpen}
 					onOpenChange={setIsReviewsDialogOpen}
+					canDelete={false}
 				/>
 			)}
 		</div>

@@ -1,7 +1,6 @@
 import { MoreVertical, PlusCircle, User } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { doctorsApi } from "@/api/client";
 import { Doctor } from "@/api/types";
 import { DoctorReviewsDialog } from "@/components/doctor-reviews-dialog";
 import { DoctorScheduleDialog } from "@/components/doctor-schedule-dialog";
@@ -22,6 +21,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { doctorPhotoImgSrc } from "@/lib/doctorPhotoSrc";
 import { Input } from "@/components/ui/input";
 import {
 	Table,
@@ -31,22 +31,26 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { useDeleteDoctorMutation, useGetDoctorsQuery } from "@/store/api/apiSlice";
+
 export default function DoctorsPage() {
-	const [doctors, setDoctors] = useState<Doctor[]>([]);
-	const [isLoading, setIsLoading] = useState(false);
+	const [appliedQuery, setAppliedQuery] = useState<string | undefined>(undefined);
+	const { data: doctors = [], isLoading, refetch } = useGetDoctorsQuery(
+		appliedQuery ? { q: appliedQuery } : undefined
+	);
+	const [deleteDoctor] = useDeleteDoctorMutation();
 	const [search, setSearch] = useState("");
-	const [filteredDoctors, setFilteredDoctors] = useState<Doctor[]>([]);
 	const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
 	const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 	const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [isReviewsDialogOpen, setIsReviewsDialogOpen] = useState(false);
 
-	useEffect(() => {
-		setFilteredDoctors(
+	const filteredDoctors = useMemo(
+		() =>
 			doctors.filter(
 				(doctor) =>
 					doctor.user.lastName
@@ -63,35 +67,20 @@ export default function DoctorsPage() {
 					) ||
 					doctor.user.email.toLowerCase().includes(search.toLowerCase()) ||
 					doctor.user.phone.includes(search)
-			)
-		);
-	}, [search, doctors]);
+			),
+		[search, doctors],
+	);
 
-	useEffect(() => {
-		fetchDoctors();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
-
-	const fetchDoctors = async () => {
-		setIsLoading(true);
-		try {
-			const response = await doctorsApi.getAll({
-				q: search || undefined,
-			});
-			setDoctors(response);
-		} catch (error) {
-			console.error("Ошибка при загрузке врачей:", error);
-			toast.error("Ошибка при загрузке врачей");
-		} finally {
-			setIsLoading(false);
-		}
+	const fetchDoctors = () => {
+		setAppliedQuery(search.trim() || undefined);
+		void refetch();
 	};
 
 	const handleDelete = async () => {
 		if (selectedDoctor) {
 			try {
-				await doctorsApi.delete(selectedDoctor.id);
-				fetchDoctors();
+				await deleteDoctor(selectedDoctor.id).unwrap();
+				void refetch();
 				setIsDeleteDialogOpen(false);
 				toast.success("Врач удален", {
 					description: "Врач успешно удален из системы",
@@ -157,19 +146,17 @@ export default function DoctorsPage() {
 								</TableHeader>
 								<TableBody>
 									{!isLoading &&
-										filteredDoctors.map((doctor) => (
+										filteredDoctors.map((doctor) => {
+											const rowPhotoSrc = doctorPhotoImgSrc(doctor.photo);
+											return (
 											<TableRow
 												className=" border-slate-700"
 												key={doctor.id}
 											>
 												<TableCell>
-													{doctor.photo ? (
+													{rowPhotoSrc ? (
 														<img
-															src={
-																doctor.photo.startsWith("data:image")
-																	? doctor.photo
-																	: `data:image/jpeg;base64,${doctor.photo}`
-															}
+															src={rowPhotoSrc}
 															alt={`${doctor.user.lastName} ${doctor.user.firstName}`}
 															className="w-12 h-12 rounded-full object-cover border-2 border-slate-300"
 															onError={(e) => {
@@ -282,7 +269,8 @@ export default function DoctorsPage() {
 													</div>
 												</TableCell>
 											</TableRow>
-										))}
+											);
+										})}
 									{!isLoading &&
 										filteredDoctors.length === 0 && (
 											<TableRow>

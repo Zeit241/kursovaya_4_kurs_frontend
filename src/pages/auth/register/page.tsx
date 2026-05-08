@@ -8,7 +8,7 @@ import { PatternFormat } from "react-number-format";
 import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 
-import { authApi } from "@/api/client";
+import { useRegisterMutation } from "@/store/api/apiSlice";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -53,6 +53,7 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
 	const router = useNavigate();
+	const [registerMut] = useRegisterMutation();
 	const [isLoading, setIsLoading] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
 	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -76,13 +77,13 @@ export default function RegisterPage() {
 		setIsLoading(true);
 
 		try {
-			const response = await authApi.register({
+			const response = await registerMut({
 				email: data.email,
 				password: data.password,
 				confirmPassword: data.confirmPassword,
 				phone: data.phone,
 				fio: data.fio,
-			});
+			}).unwrap();
 
 			// Сохраняем токены и данные пользователя
 			if (response.success && response.data) {
@@ -100,28 +101,26 @@ export default function RegisterPage() {
 
 			// Перенаправление на страницу входа
 			router("/auth/login");
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error("Ошибка при регистрации:", error);
 
-			// Обработка ошибок от сервера
-			if (error.response?.data) {
-				const errorData = error.response.data;
+			const errorData =
+				error && typeof error === "object" && "data" in error
+					? (error as { data?: unknown }).data
+					: undefined;
 
-				// Если сервер вернул детали ошибок для конкретных полей
-				if (typeof errorData === "object") {
-					Object.entries(errorData).forEach(([field, messages]) => {
-						toast.error(`Ошибка в поле ${field}`, {
-							description: Array.isArray(messages)
-								? messages[0]
-								: messages,
-						});
+			if (errorData && typeof errorData === "object") {
+				Object.entries(errorData as Record<string, unknown>).forEach(([field, messages]) => {
+					toast.error(`Ошибка в поле ${field}`, {
+						description: Array.isArray(messages)
+							? String(messages[0])
+							: String(messages),
 					});
-				} else {
-					// Если сервер вернул общее сообщение об ошибке
-					toast.error("Ошибка регистрации", {
-						description: errorData,
-					});
-				}
+				});
+			} else if (errorData !== undefined) {
+				toast.error("Ошибка регистрации", {
+					description: String(errorData),
+				});
 			} else {
 				toast.error("Ошибка регистрации", {
 					description:

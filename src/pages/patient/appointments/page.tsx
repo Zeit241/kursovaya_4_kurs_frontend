@@ -8,11 +8,11 @@ import {
 	Loader2,
 	MapPin,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { appointmentsApi, usersApi } from "@/api/client";
 import { Appointment } from "@/api/types";
+import { formatClinicServicePriceFromFields } from "@/lib/format-clinic-service-price";
 import { AppointmentDetailsDialog } from "@/components/appointment-details-dialog";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,49 +33,37 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
+import {
+	useCancelAppointmentMutation,
+	useGetAppointmentsByPatientQuery,
+} from "@/store/api/apiSlice";
+
 export default function PatientAppointmentsPage() {
 	const { user } = useAuth();
-	const [appointments, setAppointments] = useState<Appointment[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
+	const patientId = user?.patientId;
+	const {
+		data: appointments = [],
+		isLoading,
+		isError,
+		refetch,
+	} = useGetAppointmentsByPatientQuery(patientId!, { skip: !patientId });
+	const [cancelAppointment] = useCancelAppointmentMutation();
+
+	const error = !patientId
+		? "Пользователь не является пациентом"
+		: isError
+			? "Ошибка при загрузке приёмов"
+			: null;
+
 	const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 	const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
-	useEffect(() => {
-		if (user?.id) {
-			fetchAppointments();
-		}
-	}, [user]);
-
-	const fetchAppointments = async () => {
-		if (!user?.id) return;
-		try {
-			setIsLoading(true);
-			setError(null);
-			// Получаем данные пользователя для получения patientId
-			const userData = await usersApi.getMe();
-			if (!userData.patientId) {
-				setError("Пользователь не является пациентом");
-				toast.error("Не удалось найти данные пациента");
-				return;
-			}
-			// Получаем записи по patientId
-			const response = await appointmentsApi.getByPatient(userData.patientId);
-			setAppointments(response || []);
-		} catch (err) {
-			setError("Ошибка при загрузке приёмов");
-			toast.error("Не удалось загрузить приёмы");
-		} finally {
-			setIsLoading(false);
-		}
-	};
-
 	const handleCancelAppointment = async (appointmentId: number) => {
 		try {
-			await appointmentsApi.cancel(appointmentId);
+			await cancelAppointment({ id: appointmentId, body: {} }).unwrap();
 			toast.success("Приём успешно отменён");
-			fetchAppointments(); // Обновляем список приёмов
-		} catch (err) {
+			refetch();
+		} catch {
 			toast.error("Не удалось отменить приём");
 		}
 	};
@@ -162,12 +150,20 @@ export default function PatientAppointmentsPage() {
 												}
 												specialty={
 													appointment.doctor?.specialization ||
-													"Специальность не указана"
+													""
 												}
 												room={
 													appointment.room?.code ||
 													appointment.room?.name ||
 													"Не указан"
+												}
+												serviceName={appointment.service?.name ?? null}
+												servicePriceLabel={
+													appointment.service
+														? formatClinicServicePriceFromFields(
+																appointment.service.price
+															)
+														: null
 												}
 												status={appointment.status as "scheduled" | "completed" | "cancelled"}
 												animationDelay={`stagger-${
@@ -220,12 +216,20 @@ export default function PatientAppointmentsPage() {
 												}
 												specialty={
 													appointment.doctor?.specializations?.[0]?.name ||
-													"Специальность не указана"
+													""
 												}
 												room={
 													appointment.room?.code ||
 													appointment.room?.name ||
 													"Не указан"
+												}
+												serviceName={appointment.service?.name ?? null}
+												servicePriceLabel={
+													appointment.service
+														? formatClinicServicePriceFromFields(
+																appointment.service.price
+															)
+														: null
 												}
 												status={
 													appointment.status === "completed"
@@ -265,7 +269,7 @@ export default function PatientAppointmentsPage() {
 				appointment={selectedAppointment}
 				open={isDetailsDialogOpen}
 				onOpenChange={setIsDetailsDialogOpen}
-				onUpdate={fetchAppointments}
+				onUpdate={() => void refetch()}
 				isPatientView={true}
 			/>
 		</div>
@@ -280,6 +284,10 @@ interface AppointmentCardProps {
 	specialty: string;
 	room: string;
 	status: "scheduled" | "completed" | "cancelled";
+	/** Название услуги (если была выбрана при записи) */
+	serviceName?: string | null;
+	/** Уже отформатированная цена или null, если услуги нет */
+	servicePriceLabel?: string | null;
 	animationDelay?: string;
 	onCancel?: () => void;
 	onViewDetails?: () => void;
@@ -293,6 +301,8 @@ function AppointmentCard({
 	specialty,
 	room,
 	status,
+	serviceName,
+	servicePriceLabel,
 	animationDelay,
 	onCancel,
 	onViewDetails,
@@ -349,7 +359,7 @@ function AppointmentCard({
 								</Badge>
 							</div>
 							<h3 className="mt-2 text-lg font-medium">
-								{specialty} - {doctor}
+								{specialty} {doctor}
 							</h3>
 							<div className="mt-2 flex flex-col gap-1 text-sm text-slate-600">
 								<div className="flex items-center gap-1">
@@ -362,6 +372,24 @@ function AppointmentCard({
 									<MapPin className="h-4 w-4" />
 									<span>Кабинет {room}</span>
 								</div>
+								{serviceName ? (
+									<div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-slate-600">
+										<span>Услуга:</span>
+										<span className="font-medium text-foreground">
+											{serviceName}
+										</span>
+										{servicePriceLabel &&
+										servicePriceLabel !== "—" ? (
+											<span className="font-semibold text-foreground">
+												{servicePriceLabel}
+											</span>
+										) : (
+											<span className="text-muted-foreground text-xs">
+												(стоимость уточняйте в клинике)
+											</span>
+										)}
+									</div>
+								) : null}
 							</div>
 						</div>
 					</div>

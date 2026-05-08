@@ -1,13 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { PatternFormat } from "react-number-format";
 import { Link } from "react-router-dom";
 import { z } from "zod";
 
-import { doctorsApi, specializationsApi } from "@/api/client";
-import { Specialization } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -26,9 +24,12 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown } from "lucide-react";
+import { directusAssetPreviewUrl, uploadImageToDirectus } from "@/lib/directusUpload";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+
+import { useCreateDoctorMutation, useGetSpecializationsQuery } from "@/store/api/apiSlice";
 const doctorSchema = z.object({
 	lastName: z.string().min(2, "Фамилия должна содержать минимум 2 символа"),
 	firstName: z.string().min(2, "Имя должно содержать минимум 2 символа"),
@@ -56,10 +57,12 @@ type DoctorFormData = z.infer<typeof doctorSchema>;
 
 export default function NewDoctorPage() {
 	const navigate = useNavigate();
+	const { data: specializations = [], isLoading: isLoadingSpecializations } =
+		useGetSpecializationsQuery();
+	const [createDoctor] = useCreateDoctorMutation();
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [specializations, setSpecializations] = useState<Specialization[]>([]);
-	const [isLoadingSpecializations, setIsLoadingSpecializations] = useState(true);
 	const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+	const [isPhotoUploading, setIsPhotoUploading] = useState(false);
 
 	const {
 		register,
@@ -80,46 +83,33 @@ export default function NewDoctorPage() {
 
 	const selectedSpecializationIds = watch("specializationIds") || [];
 
-	useEffect(() => {
-		const fetchSpecializations = async () => {
-			try {
-				const data = await specializationsApi.getAll();
-				setSpecializations(data);
-			} catch (error) {
-				toast.error("Ошибка", {
-					description: "Не удалось загрузить список специализаций",
-				});
-			} finally {
-				setIsLoadingSpecializations(false);
-			}
-		};
-		fetchSpecializations();
-	}, []);
-
-	const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
-		if (file) {
-			// Проверяем размер файла (максимум 5MB)
-			if (file.size > 5 * 1024 * 1024) {
-				toast.error("Ошибка", {
-					description: "Размер файла не должен превышать 5MB",
-				});
-				return;
-			}
-			// Проверяем тип файла
-			if (!file.type.startsWith("image/")) {
-				toast.error("Ошибка", {
-					description: "Выберите изображение",
-				});
-				return;
-			}
-			const reader = new FileReader();
-			reader.onloadend = () => {
-				const base64String = reader.result as string;
-				setValue("photo", base64String);
-				setPhotoPreview(base64String);
-			};
-			reader.readAsDataURL(file);
+		e.target.value = "";
+		if (!file) return;
+		if (file.size > 5 * 1024 * 1024) {
+			toast.error("Ошибка", {
+				description: "Размер файла не должен превышать 5MB",
+			});
+			return;
+		}
+		if (!file.type.startsWith("image/")) {
+			toast.error("Ошибка", {
+				description: "Выберите изображение",
+			});
+			return;
+		}
+		setIsPhotoUploading(true);
+		try {
+			const fileId = await uploadImageToDirectus(file);
+			setValue("photo", fileId);
+			setPhotoPreview(directusAssetPreviewUrl(fileId));
+			toast.success("Фото загружено в Directus");
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			toast.error("Не удалось загрузить фото", { description: msg });
+		} finally {
+			setIsPhotoUploading(false);
 		}
 	};
 
@@ -156,7 +146,7 @@ export default function NewDoctorPage() {
 					}),
 			};
 
-			await doctorsApi.create(requestData);
+			await createDoctor(requestData).unwrap();
 			navigate("/admin/doctors");
 			toast.success("Врач добавлен", {
 				description: "Новый врач успешно добавлен в систему",
@@ -363,11 +353,12 @@ export default function NewDoctorPage() {
 											type="file"
 											accept="image/*"
 											onChange={handlePhotoChange}
+											disabled={isPhotoUploading}
 											className="border-slate-700"
 										/>
 									</div>
 									<p className="text-xs text-slate-500">
-										Максимальный размер файла: 5MB
+										Directus: VITE_DIRECTUS_URL, VITE_DIRECTUS_STATIC_TOKEN. Максимум 5MB.
 									</p>
 								</div>
 

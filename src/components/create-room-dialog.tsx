@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 
-import { roomsApi } from "@/api/client";
 import { Room } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +26,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
+import { useCreateRoomMutation } from "@/store/api/apiSlice";
+
 const formSchema = z.object({
 	code: z.string().min(1, "Код кабинета обязателен для заполнения"),
 	name: z.string().optional(),
@@ -45,6 +46,7 @@ export function CreateRoomDialog({
 	trigger,
 	onRoomCreated,
 }: CreateRoomDialogProps) {
+	const [createRoom] = useCreateRoomMutation();
 	const [internalOpen, setInternalOpen] = useState(false);
 	const open = controlledOpen ?? internalOpen;
 	const setOpen = onOpenChange ?? setInternalOpen;
@@ -108,10 +110,10 @@ export function CreateRoomDialog({
 	const onSubmit = async (data: z.infer<typeof formSchema>) => {
 		setIsSubmitting(true);
 		try {
-			const room = await roomsApi.create({
+			const room = await createRoom({
 				code: data.code,
 				name: data.name || undefined,
-			});
+			}).unwrap();
 
 			toast.success("Кабинет создан", {
 				description: "Кабинет успешно добавлен",

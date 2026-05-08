@@ -1,4 +1,3 @@
-import { compareAsc, format, parse } from "date-fns";
 import {
 	Calendar,
 	ChevronLeft,
@@ -10,7 +9,6 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { appointmentsApi, patientsApi } from "@/api/client";
 import { Patient } from "@/api/types";
 import { BookAppointmentForm } from "@/components/book-appointment-form";
 import { EditPatientDialog } from "@/components/edit-patient-dialog";
@@ -43,12 +41,22 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import {
+	useCancelAppointmentMutation,
+	useDeletePatientMutation,
+	useGetAppointmentsByPatientQuery,
+	useGetPatientsQuery,
+} from "@/store/api/apiSlice";
+
+import { sortPatientAppointments } from "./sort-patient-appointments";
+
 export default function PatientsPage() {
-	const [patients, setPatients] = useState<Patient[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
+	const { data: patients = [], isLoading, refetch: refetchPatients } = useGetPatientsQuery();
+	const [deletePatient] = useDeletePatientMutation();
+	const [cancelAppointment] = useCancelAppointmentMutation();
 	const [selectedPatient, setSelectedPatient] =
 		useState<Patient | null>(null);
 	const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -59,8 +67,6 @@ export default function PatientsPage() {
 	const [filteredPatients, setFilteredPatients] = useState<Patient[]>(
 		[]
 	);
-	const [patientAppointments, setPatientAppointments] = useState<any[]>([]);
-	const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
 	const [isDeletingAppointment, setIsDeletingAppointment] = useState(false);
 	const [appointmentToCancel, setAppointmentToCancel] = useState<
 		number | null
@@ -73,9 +79,18 @@ export default function PatientsPage() {
 	const [totalCount, setTotalCount] = useState(0);
 	const itemsPerPage = 10;
 
-	useEffect(() => {
-		fetchPatients(currentPage);
-	}, [currentPage]);
+	const {
+		data: rawPatientAppointments = [],
+		isFetching: isLoadingAppointments,
+		refetch: refetchPatientAppointments,
+	} = useGetAppointmentsByPatientQuery(selectedPatient?.id ?? 0, {
+		skip: !isBookingDialogOpen || !selectedPatient,
+	});
+
+	const patientAppointments = useMemo(
+		() => sortPatientAppointments(rawPatientAppointments),
+		[rawPatientAppointments]
+	);
 
 	useEffect(() => {
 		const filtered = patients.filter((patient) => {
@@ -92,67 +107,28 @@ export default function PatientsPage() {
 		setFilteredPatients(filtered);
 	}, [searchQuery, patients]);
 
-	const fetchPatients = async (page: number = 1) => {
-		setIsLoading(true);
-		try {
-			const response = await patientsApi.getAll();
-			setPatients(response);
-			setFilteredPatients(response);
-			setTotalCount(response.length);
-			setTotalPages(Math.ceil(response.length / itemsPerPage));
-			setCurrentPage(page);
-		} catch (error) {
-			toast.error("Ошибка при загрузке пациентов");
-		} finally {
-			setIsLoading(false);
-		}
-	};
+	const paginatedPatients = useMemo(() => {
+		const start = (currentPage - 1) * itemsPerPage;
+		return filteredPatients.slice(start, start + itemsPerPage);
+	}, [filteredPatients, currentPage]);
 
-	const fetchPatientAppointments = async (patientId: number) => {
-		setIsLoadingAppointments(true);
-		try {
-			const response = await appointmentsApi.getByPatient(patientId);
-
-			// Сортируем записи: сначала будущие по возрастанию, потом прошедшие по убыванию
-			const sortedAppointments = response.sort((a, b) => {
-				const dateA = new Date(a.startTime);
-				const dateB = new Date(b.startTime);
-				const now = new Date();
-
-				// Если одна запись прошла, а другая нет
-				const aIsPast = dateA < now;
-				const bIsPast = dateB < now;
-				if (aIsPast !== bIsPast) {
-					return aIsPast ? 1 : -1;
-				}
-
-				// Если обе записи в будущем, сортируем по возрастанию
-				if (!aIsPast && !bIsPast) {
-					return compareAsc(dateA, dateB);
-				}
-
-				// Если обе записи в прошлом, сортируем по убыванию
-				return compareAsc(dateB, dateA);
-			});
-
-			setPatientAppointments(sortedAppointments);
-		} catch (error) {
-			toast.error("Ошибка при загрузке записей пациента");
-		} finally {
-			setIsLoadingAppointments(false);
-		}
-	};
+	useEffect(() => {
+		setTotalCount(filteredPatients.length);
+		setTotalPages(Math.max(1, Math.ceil(filteredPatients.length / itemsPerPage)));
+	}, [filteredPatients.length, itemsPerPage]);
 
 	const handleDeletePatient = async () => {
 		if (!selectedPatient) return;
 
 		try {
-			await patientsApi.delete(selectedPatient.id);
+			await deletePatient(selectedPatient.id).unwrap();
 			toast.success("Пациент успешно удален");
-			fetchPatients();
-		} catch (error: any) {
+			void refetchPatients();
+		} catch (error: unknown) {
 			toast.error(
-				error.response?.data?.error || "Ошибка при удалении пациента"
+				error && typeof error === "object" && "data" in error
+					? String((error as { data?: { error?: string } }).data?.error)
+					: "Ошибка при удалении пациента"
 			);
 		} finally {
 			setIsDeleteDialogOpen(false);
@@ -163,11 +139,9 @@ export default function PatientsPage() {
 	const handleDeleteAppointment = async (appointmentId: number) => {
 		try {
 			setIsDeletingAppointment(true);
-			await appointmentsApi.cancel(appointmentId);
+			await cancelAppointment({ id: appointmentId, body: {} }).unwrap();
 			toast.success("Запись успешно отменена");
-			if (selectedPatient) {
-				await fetchPatientAppointments(selectedPatient.id);
-			}
+			void refetchPatientAppointments();
 		} catch (error) {
 			toast.error("Ошибка при отмене записи");
 		} finally {
@@ -258,7 +232,7 @@ export default function PatientsPage() {
 											</TableCell>
 										</TableRow>
 									) : (
-										filteredPatients.map((patient) => (
+										paginatedPatients.map((patient) => (
 											<TableRow
 												key={patient.id}
 												className=" border-slate-700"
@@ -316,9 +290,6 @@ export default function PatientsPage() {
 																	setIsBookingDialogOpen(
 																		true
 																	);
-																	fetchPatientAppointments(
-																		patient.id
-																	);
 																}}
 															>
 																<Calendar className="mr-2 h-4 w-4" />
@@ -350,13 +321,13 @@ export default function PatientsPage() {
 							{/* Добавляем пагинацию */}
 							<div className="flex items-center justify-between px-4 py-4 border-t border-slate-700">
 								<div className="text-sm text-slate-400">
-									Показано {patients.length} из {totalCount} пациентов
+									Показано {paginatedPatients.length} из {totalCount} пациентов
 								</div>
 								<div className="flex items-center gap-2">
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => fetchPatients(currentPage - 1)}
+										onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
 										disabled={currentPage === 1}
 										className="border-slate-700"
 									>
@@ -368,7 +339,7 @@ export default function PatientsPage() {
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => fetchPatients(currentPage + 1)}
+										onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
 										disabled={currentPage === totalPages}
 										className="border-slate-700"
 									>
@@ -387,7 +358,7 @@ export default function PatientsPage() {
 								setIsEditing(open);
 								if (!open) {
 									setSelectedPatient(null);
-									fetchPatients();
+									void refetchPatients();
 								}
 							}}
 						/>
@@ -531,7 +502,7 @@ export default function PatientsPage() {
 											onClose={() => {
 												setIsBookingDialogOpen(false);
 												setSelectedPatient(null);
-												fetchPatients();
+												void refetchPatients();
 											}}
 											patient={selectedPatient}
 										/>
