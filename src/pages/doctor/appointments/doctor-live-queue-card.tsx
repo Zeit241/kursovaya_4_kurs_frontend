@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 interface QueueEntry {
 	patientId: number;
 	position: number;
+	patientFullName?: string | null;
 }
 
 interface DoctorLiveQueueCardProps {
@@ -26,14 +27,14 @@ export function DoctorLiveQueueCard({
 			<CardHeader>
 				<CardTitle>Живая очередь</CardTitle>
 				<CardDescription>
-					Redis (позиции обновляются после завершения приёма)
+					Порядок обновляется после завершения приёма
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{queueLoading ? (
-					<Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+					<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 				) : liveQueue.length === 0 ? (
-					<p className="text-sm text-slate-500">Очередь пуста</p>
+					<p className="text-sm text-muted-foreground">Очередь пуста</p>
 				) : (
 					<ol className="list-decimal space-y-2 pl-4 text-sm">
 						{liveQueue
@@ -41,8 +42,9 @@ export function DoctorLiveQueueCard({
 							.sort((x, y) => x.position - y.position)
 							.map((entry) => (
 								<li key={`${entry.patientId}-${entry.position}`}>
-									Пациент #{entry.patientId}
-									<span className="text-slate-500">
+									{entry.patientFullName?.trim() ||
+										`Пациент #${entry.patientId}`}
+									<span className="text-muted-foreground">
 										{" "}
 										(поз. {entry.position + 1})
 									</span>

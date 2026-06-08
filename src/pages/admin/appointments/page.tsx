@@ -1,6 +1,7 @@
 "use client";
 
 import type { AppointmentsQueryParams, Appointment } from "@/api/types";
+import { formatAppointmentDateTime } from "@/lib/appointment-time";
 import { AppointmentDetailsDialog } from "@/components/appointment-details-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,6 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { format } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
 import {
 	useGetAppointmentsQuery,
@@ -135,7 +135,7 @@ export default function AppointmentsPage() {
 									<Input
 										id="date"
 										type="date"
-										className="mt-1 border-slate-700"
+										className="mt-1 border-input"
 										value={filters.date}
 										onChange={(e) =>
 											handleFilterChange(
@@ -155,7 +155,7 @@ export default function AppointmentsPage() {
 									>
 										<SelectTrigger
 											id="doctor"
-											className="mt-1 border-slate-700"
+											className="mt-1 border-input"
 										>
 											<SelectValue placeholder="Все врачи" />
 										</SelectTrigger>
@@ -185,7 +185,7 @@ export default function AppointmentsPage() {
 									>
 										<SelectTrigger
 											id="status"
-											className="mt-1 border-slate-700"
+											className="mt-1 border-input"
 										>
 											<SelectValue placeholder="Все статусы" />
 										</SelectTrigger>
@@ -259,8 +259,8 @@ export default function AppointmentsPage() {
 											return (
 												<TableRow key={appointment.id}>
 													<TableCell className="font-medium">
-														{format(
-															new Date(appointment.startTime),
+														{formatAppointmentDateTime(
+															appointment.startTime,
 															"dd.MM.yyyy HH:mm"
 														)}
 													</TableCell>
@@ -292,14 +292,14 @@ export default function AppointmentsPage() {
 																{doctor.specializations.map((spec) => (
 																	<span
 																		key={spec.id}
-																		className="px-2 py-1 rounded-full text-xs border border-slate-700"
+																		className="px-2 py-1 rounded-full text-xs border border-input"
 																	>
 																		{spec.name}
 																	</span>
 																))}
 															</div>
 														) : (
-															<span className="text-slate-400">-</span>
+															<span className="text-muted-foreground">-</span>
 														)}
 													</TableCell>
 													<TableCell>
@@ -308,7 +308,7 @@ export default function AppointmentsPage() {
 												<TableCell>
 													<Badge
 														className={
-															"border-slate-700"
+															"border-input"
 														}
 													>
 														{
@@ -321,7 +321,7 @@ export default function AppointmentsPage() {
 														<Button
 															variant="outline"
 															size="sm"
-															className="border-slate-700 hover:bg-slate-800"
+															className="border-input hover:bg-muted"
 															onClick={() => {
 																setSelectedAppointment(
 																	appointment
@@ -346,8 +346,8 @@ export default function AppointmentsPage() {
 							</Table>
 							
 							{/* Добавляем пагинацию */}
-							<div className="flex items-center justify-between px-4 py-4 border-t border-slate-700">
-								<div className="text-sm text-slate-400">
+							<div className="flex items-center justify-between px-4 py-4 border-t border-input">
+								<div className="text-sm text-muted-foreground">
 									Показано {appointments.length} из {totalCount} приёмов
 								</div>
 								<div className="flex items-center gap-2">
@@ -356,7 +356,7 @@ export default function AppointmentsPage() {
 										size="sm"
 										onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
 										disabled={currentPage === 1}
-										className="border-slate-700"
+										className="border-input"
 									>
 										<ChevronLeft className="h-4 w-4" />
 									</Button>
@@ -368,7 +368,7 @@ export default function AppointmentsPage() {
 										size="sm"
 										onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
 										disabled={currentPage === totalPages}
-										className="border-slate-700"
+										className="border-input"
 									>
 										<ChevronRight className="h-4 w-4" />
 									</Button>

@@ -1,10 +1,11 @@
 import { compareAsc } from "date-fns";
+import { appointmentTimeMs } from "@/lib/appointment-time";
 
 export function sortPatientAppointments<T extends { startTime: string }>(response: T[]): T[] {
 	return [...response].sort((a, b) => {
-		const dateA = new Date(a.startTime);
-		const dateB = new Date(b.startTime);
-		const now = new Date();
+		const dateA = appointmentTimeMs(a.startTime);
+		const dateB = appointmentTimeMs(b.startTime);
+		const now = Date.now();
 		const aIsPast = dateA < now;
 		const bIsPast = dateB < now;
 		if (aIsPast !== bIsPast) {

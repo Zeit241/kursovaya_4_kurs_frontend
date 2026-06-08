@@ -156,7 +156,7 @@ export default function AdminCategoriesPage() {
 								value={search}
 								onChange={(e) => setSearch(e.target.value)}
 								placeholder="Код, название или описание"
-								className="border-slate-700"
+								className="border-input"
 							/>
 						</CardContent>
 					</Card>
@@ -240,7 +240,7 @@ export default function AdminCategoriesPage() {
 								value={code}
 								onChange={(e) => setCode(e.target.value)}
 								placeholder="например, THERAPY"
-								className="border-slate-700"
+								className="border-input"
 							/>
 						</div>
 						<div className="grid gap-2">
@@ -250,7 +250,7 @@ export default function AdminCategoriesPage() {
 								value={name}
 								onChange={(e) => setName(e.target.value)}
 								placeholder="Отображаемое название"
-								className="border-slate-700"
+								className="border-input"
 							/>
 						</div>
 						<div className="grid gap-2">
@@ -260,7 +260,7 @@ export default function AdminCategoriesPage() {
 								value={description}
 								onChange={(e) => setDescription(e.target.value)}
 								rows={3}
-								className="border-slate-700 resize-none"
+								className="border-input resize-none"
 							/>
 						</div>
 					</div>

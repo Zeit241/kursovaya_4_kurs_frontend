@@ -107,11 +107,17 @@ export interface Appointment {
 	// Результат приёма (может отсутствовать в некоторых ответах)
 	result?: string | null;
 	doctor?: Doctor | null;
-	patient?: Patient | null;
+	patient?: (Patient & {
+		firstName?: string;
+		lastName?: string;
+		middleName?: string | null;
+		fullName?: string | null;
+	}) | null;
 	room?: {
 		id: number;
 		code: string;
 		name?: string;
+		displayName?: string | null;
 	} | null;
 	service?: {
 		id: number;
@@ -161,6 +167,7 @@ export interface Queue {
 	doctorId: number;
 	appointmentId?: number | null;
 	patientId: number;
+	patientFullName?: string | null;
 	position: number;
 	lastUpdated: string;
 }
@@ -285,6 +292,7 @@ export interface UpdateUserRequest {
 }
 
 export interface CreateDoctorRequest {
+	password: string;
 	user: {
 		email: string;
 		phone?: string;
@@ -347,7 +355,14 @@ export interface SetServiceSpecializationsRequest {
 	specializationIds: number[];
 }
 
+export interface SendLoginCredentialsRequest {
+	email: string;
+	password: string;
+	recipientName?: string;
+}
+
 export interface CreatePatientRequest {
+	password: string;
 	user: {
 		email: string;
 		phone?: string;
@@ -429,6 +444,8 @@ export interface UpdateAppointmentRequest {
 export interface BookAppointmentRequest {
 	appointmentId: number;
 	userId: number;
+	/** Явный id пациента (запись админом) */
+	patientId?: number | null;
 	/** Если слот без услуги — бэкенд проставит; если у слота услуга — должна совпадать */
 	serviceId?: number | null;
 }

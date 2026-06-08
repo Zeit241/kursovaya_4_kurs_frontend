@@ -10,6 +10,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import type { BookingFormValues } from "./booking-form-schema";
 import { slotServiceLabel } from "./slot-service-label";
+import { logAvailableSlotsDebug } from "./slot-debug-log";
+import { filterBookableSlots } from "@/lib/appointment-slot";
 
 export function useBookingFormData(form: UseFormReturn<BookingFormValues>) {
 	const dispatch = useAppDispatch();
@@ -269,13 +271,21 @@ export function useBookingFormData(form: UseFormReturn<BookingFormValues>) {
 				opts = { serviceId: Number(svc) };
 			}
 			const response = await dispatch(
-				api.endpoints.getAvailableSlots.initiate({
-					doctorId: Number(selectedDoctor),
-					date: selectedDate,
-					serviceId: opts?.serviceId ?? undefined,
-				})
+				api.endpoints.getAvailableSlots.initiate(
+					{
+						doctorId: Number(selectedDoctor),
+						date: selectedDate,
+						serviceId: opts?.serviceId ?? undefined,
+					},
+					{ forceRefetch: true }
+				)
 			).unwrap();
-			setSlots(response);
+			logAvailableSlotsDebug(response, {
+				doctorId: Number(selectedDoctor),
+				date: selectedDate,
+				serviceId: opts?.serviceId,
+			});
+			setSlots(filterBookableSlots(response));
 		} finally {
 			setIsLoadingSlots(false);
 		}

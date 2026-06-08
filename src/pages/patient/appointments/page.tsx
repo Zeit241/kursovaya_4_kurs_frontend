@@ -1,5 +1,3 @@
-import { format, isPast } from "date-fns";
-import { ru } from "date-fns/locale";
 import {
 	ArrowLeft,
 	Calendar,
@@ -13,6 +11,16 @@ import { Link } from "react-router-dom";
 
 import { Appointment } from "@/api/types";
 import { formatClinicServicePriceFromFields } from "@/lib/format-clinic-service-price";
+import {
+	appointmentDoctorName,
+	appointmentDoctorSpecialty,
+	appointmentRoomName,
+} from "@/lib/appointment-display";
+import {
+	formatAppointmentDate,
+	formatAppointmentTime,
+	appointmentTimeMs,
+} from "@/lib/appointment-time";
 import { AppointmentDetailsDialog } from "@/components/appointment-details-dialog";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/contexts/AuthContext";
@@ -71,7 +79,7 @@ export default function PatientAppointmentsPage() {
 	// Разделяем приёмы на предстоящие и прошедшие
 	const upcomingAppointments = appointments.filter(
 		(appointment) => {
-			const isFuture = !isPast(new Date(appointment.startTime));
+			const isFuture = appointmentTimeMs(appointment.startTime) > Date.now();
 			const isActive = ["scheduled", "confirmed", "in_progress"].includes(appointment.status);
 			return isFuture && isActive;
 		}
@@ -79,7 +87,8 @@ export default function PatientAppointmentsPage() {
 
 	const pastAppointments = appointments.filter(
 		(appointment) => {
-			const isPastAppointment = isPast(new Date(appointment.startTime));
+			const isPastAppointment =
+				appointmentTimeMs(appointment.startTime) <= Date.now();
 			const isCompleted = ["completed", "cancelled", "no_show"].includes(appointment.status);
 			return isPastAppointment || isCompleted;
 		}
@@ -103,7 +112,7 @@ export default function PatientAppointmentsPage() {
 						<h2 className="text-3xl font-bold gradient-heading">
 							Мои приёмы
 						</h2>
-						<p className="mt-2 text-slate-600">
+						<p className="mt-2 text-muted-foreground">
 							История и предстоящие приёмы
 						</p>
 					</div>
@@ -125,7 +134,7 @@ export default function PatientAppointmentsPage() {
 									{error}
 								</div>
 							) : upcomingAppointments.length === 0 ? (
-								<div className="text-center text-slate-600 py-8">
+								<div className="text-center text-muted-foreground py-8">
 									У вас нет предстоящих приёмов
 								</div>
 							) : (
@@ -134,29 +143,11 @@ export default function PatientAppointmentsPage() {
 										(appointment, index) => (
 											<AppointmentCard
 												key={appointment.id}
-												date={format(
-													new Date(appointment.startTime),
-													"d MMMM yyyy",
-													{ locale: ru }
-												)}
-												time={format(
-													new Date(appointment.startTime),
-													"HH:mm"
-												)}
-												doctor={
-													appointment.doctor?.displayName ||
-													`${appointment.doctor?.user?.lastName || ""} ${appointment.doctor?.user?.firstName || ""}`.trim() ||
-													"Врач не указан"
-												}
-												specialty={
-													appointment.doctor?.specialization ||
-													""
-												}
-												room={
-													appointment.room?.code ||
-													appointment.room?.name ||
-													"Не указан"
-												}
+												date={formatAppointmentDate(appointment.startTime, "d MMMM yyyy")}
+												time={formatAppointmentTime(appointment.startTime)}
+												doctor={appointmentDoctorName(appointment)}
+												specialty={appointmentDoctorSpecialty(appointment)}
+												room={appointmentRoomName(appointment)}
 												serviceName={appointment.service?.name ?? null}
 												servicePriceLabel={
 													appointment.service
@@ -190,7 +181,7 @@ export default function PatientAppointmentsPage() {
 									{error}
 								</div>
 							) : pastAppointments.length === 0 ? (
-								<div className="text-center text-slate-600 py-8">
+								<div className="text-center text-muted-foreground py-8">
 									У вас нет завершённых приёмов
 								</div>
 							) : (
@@ -200,29 +191,15 @@ export default function PatientAppointmentsPage() {
 											<AppointmentCard
 												key={appointment.id}
 												appointment={appointment}
-												date={format(
-													new Date(appointment.startTime),
-													"d MMMM yyyy",
-													{ locale: ru }
-												)}
-												time={format(
-													new Date(appointment.startTime),
-													"HH:mm"
-												)}
-												doctor={
-													appointment.doctor?.displayName ||
-													`${appointment.doctor?.user?.lastName || ""} ${appointment.doctor?.user?.firstName || ""}`.trim() ||
-													"Врач не указан"
-												}
+												date={formatAppointmentDate(appointment.startTime, "d MMMM yyyy")}
+												time={formatAppointmentTime(appointment.startTime)}
+												doctor={appointmentDoctorName(appointment)}
 												specialty={
+													appointmentDoctorSpecialty(appointment) ||
 													appointment.doctor?.specializations?.[0]?.name ||
 													""
 												}
-												room={
-													appointment.room?.code ||
-													appointment.room?.name ||
-													"Не указан"
-												}
+												room={appointmentRoomName(appointment)}
 												serviceName={appointment.service?.name ?? null}
 												servicePriceLabel={
 													appointment.service
@@ -361,7 +338,7 @@ function AppointmentCard({
 							<h3 className="mt-2 text-lg font-medium">
 								{specialty} {doctor}
 							</h3>
-							<div className="mt-2 flex flex-col gap-1 text-sm text-slate-600">
+							<div className="mt-2 flex flex-col gap-1 text-sm text-muted-foreground">
 								<div className="flex items-center gap-1">
 									<Clock className="h-4 w-4" />
 									<span>
@@ -370,10 +347,10 @@ function AppointmentCard({
 								</div>
 								<div className="flex items-center gap-1">
 									<MapPin className="h-4 w-4" />
-									<span>Кабинет {room}</span>
+									<span>{room}</span>
 								</div>
 								{serviceName ? (
-									<div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-slate-600">
+									<div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-muted-foreground">
 										<span>Услуга:</span>
 										<span className="font-medium text-foreground">
 											{serviceName}

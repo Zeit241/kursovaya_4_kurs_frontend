@@ -13,8 +13,10 @@ import { useBookingFormData } from "./use-booking-form-data";
 import { DoctorReviewsDialog } from "@/components/doctor-reviews-dialog";
 import { ServiceBookingPicker } from "@/components/service-booking-picker";
 import { Calendar } from "@/components/ui/calendar";
-import { useAuth } from "@/contexts/AuthContext";
 import { doctorPhotoImgSrc } from "@/lib/doctorPhotoSrc";
+import { formatUserFullName } from "@/lib/formatUserFullName";
+import { formatAppointmentTime } from "@/lib/appointment-time";
+import { isBookableAppointmentSlot } from "@/lib/appointment-slot";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +45,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatClinicServicePriceFromFields } from "@/lib/format-clinic-service-price";
+import {
+	logBookingSubmitDebug,
+	logSlotSelectionDebug,
+} from "./slot-debug-log";
 
 interface BookAppointmentFormProps {
 	patient: Patient;
@@ -54,7 +60,6 @@ export function BookAppointmentForm({
 	onClose,
 }: BookAppointmentFormProps) {
 	const [bookAppointment] = useBookAppointmentMutation();
-	const { user } = useAuth();
 	const form = useForm<BookingFormValues>({
 		resolver: zodResolver(bookingFormSchema),
 		defaultValues: {
@@ -115,18 +120,25 @@ export function BookAppointmentForm({
 	}, [serviceField, doctorServices, allServicesCatalog]);
 
 	const handleSubmit = async (data: BookingFormValues) => {
-		if (!user?.id || !data.slot_id) {
+		if (!data.slot_id) {
 			toast.error("Ошибка", {
-				description: "Не удалось определить пользователя или слот",
+				description: "Не удалось определить слот",
+			});
+			return;
+		}
+
+		const patientUserId = patient?.user?.id;
+		if (!patientUserId) {
+			toast.error("Ошибка", {
+				description: "Не удалось определить пациента для записи",
 			});
 			return;
 		}
 
 		setIsSubmitting(true);
+		const selectedSlot = slots.find((slot) => slot.id === data.slot_id);
 		try {
-			// Находим выбранный слот
-			const selectedSlot = slots.find((slot) => slot.id === data.slot_id);
-			if (!selectedSlot || selectedSlot.isBooked) {
+			if (!selectedSlot || !isBookableAppointmentSlot(selectedSlot)) {
 				toast.error("Ошибка", {
 					description: "Выбранный слот недоступен",
 				});
@@ -136,15 +148,23 @@ export function BookAppointmentForm({
 			const bookBody: {
 				appointmentId: number;
 				userId: number;
+				patientId: number;
 				serviceId?: number;
 			} = {
 				appointmentId: data.slot_id,
-				userId: patient?.user?.id || user.id,
+				userId: patientUserId,
+				patientId: patient.id,
 			};
 			if (data.service?.trim()) {
 				bookBody.serviceId = Number(data.service);
 			}
+			logBookingSubmitDebug(selectedSlot, bookBody);
 			await bookAppointment(bookBody).unwrap();
+			setSlots((currentSlots) =>
+				currentSlots.filter((slot) => slot.id !== data.slot_id)
+			);
+			form.setValue("time", "");
+			form.setValue("slot_id", undefined);
 
 			const sidAfter = data.service?.trim();
 			let successDescription = "Вы успешно записались на прием к врачу";
@@ -170,10 +190,29 @@ export function BookAppointmentForm({
 			if (onClose) {
 				onClose();
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
+			const errData =
+				error &&
+				typeof error === "object" &&
+				"data" in error &&
+				error.data &&
+				typeof error.data === "object"
+					? (error.data as { message?: string })
+					: null;
 			const errorMessage =
-				error.response?.data?.message ||
-				"Пожалуйста, попробуйте еще раз";
+				errData?.message || "Пожалуйста, попробуйте еще раз";
+			if (
+				selectedSlot &&
+				/слот уже занят|время при[ёе]ма уже прошло|слот недоступен/i.test(
+					errorMessage
+				)
+			) {
+				setSlots((currentSlots) =>
+					currentSlots.filter((slot) => slot.id !== selectedSlot.id)
+				);
+				form.setValue("time", "");
+				form.setValue("slot_id", undefined);
+			}
 			toast.error("Ошибка при создании записи", {
 				description: errorMessage,
 			});
@@ -190,7 +229,7 @@ export function BookAppointmentForm({
 						className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-500 ${
 							step >= 1
 								? "bg-blue-600 text-white"
-								: "bg-slate-200 text-slate-600"
+								: "bg-slate-200 text-muted-foreground"
 						}`}
 					>
 						{step > 1 ? (
@@ -208,7 +247,7 @@ export function BookAppointmentForm({
 						className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-500 ${
 							step >= 2
 								? "bg-blue-600 text-white"
-								: "bg-slate-200 text-slate-600"
+								: "bg-slate-200 text-muted-foreground"
 						}`}
 					>
 						{step > 2 ? (
@@ -359,19 +398,19 @@ export function BookAppointmentForm({
 										<FormItem>
 											<FormLabel>Врач</FormLabel>
 											{searchMode === "by_specialty" && !selectedSpecialty ? (
-												<div className="text-sm text-slate-500 p-4 border border-slate-200 rounded-md">
+												<div className="text-sm text-muted-foreground p-4 border border-slate-200 rounded-md">
 													Сначала выберите специальность
 												</div>
 											) : searchMode === "by_service" && !selectedService?.trim() ? (
-												<div className="text-sm text-slate-500 p-4 border border-slate-200 rounded-md">
+												<div className="text-sm text-muted-foreground p-4 border border-slate-200 rounded-md">
 													Сначала выберите услугу
 												</div>
 											) : isLoadingDoctors ? (
-												<div className="text-sm text-slate-500 p-4 border border-slate-200 rounded-md">
+												<div className="text-sm text-muted-foreground p-4 border border-slate-200 rounded-md">
 													Загрузка врачей...
 												</div>
 											) : doctors.length === 0 ? (
-												<div className="text-sm text-slate-500 p-4 border border-slate-200 rounded-md">
+												<div className="text-sm text-muted-foreground p-4 border border-slate-200 rounded-md">
 													{searchMode === "by_service"
 														? "Нет врачей с этой услугой (проверьте связи специализация–услуга в БД)"
 														: "Нет доступных врачей по выбранной специальности"}
@@ -379,7 +418,7 @@ export function BookAppointmentForm({
 											) : (
 												<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 													{doctors.map((doctor) => {
-														const fullName = `${doctor.user.lastName} ${doctor.user.firstName} ${doctor.user.middleName}`.trim();
+														const fullName = formatUserFullName(doctor.user);
 														const photoSrc = doctorPhotoImgSrc(doctor.photo);
 														const isSelected = field.value === doctor.id.toString();
 														return (
@@ -414,13 +453,13 @@ export function BookAppointmentForm({
 																					target.style.display = "none";
 																					const placeholder = document.createElement("div");
 																					placeholder.className = "w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center border-2 border-slate-300";
-																					placeholder.innerHTML = '<svg class="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>';
+																					placeholder.innerHTML = '<svg class="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>';
 																					target.parentElement?.insertBefore(placeholder, target);
 																				}}
 																			/>
 																		) : (
 																			<div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center border-2 border-slate-300">
-																				<User className="h-8 w-8 text-slate-400" />
+																				<User className="h-8 w-8 text-muted-foreground" />
 																			</div>
 																		)}
 																		<div className="flex-1 min-w-0">
@@ -428,12 +467,12 @@ export function BookAppointmentForm({
 																				{fullName}
 																			</h3>
 																			{doctor.bio && (
-																				<p className="text-xs text-slate-500 mt-1 line-clamp-2">
+																				<p className="text-xs text-muted-foreground mt-1 line-clamp-2">
 																					{doctor.bio}
 																				</p>
 																			)}
 																			{doctor.experienceYears > 0 && (
-																				<p className="text-xs text-slate-500 mt-1">
+																				<p className="text-xs text-muted-foreground mt-1">
 																					Опыт: {doctor.experienceYears} {doctor.experienceYears === 1 ? "год" : doctor.experienceYears < 5 ? "года" : "лет"}
 																				</p>
 																			)}
@@ -461,7 +500,7 @@ export function BookAppointmentForm({
 																							/>
 																						))}
 																					</div>
-																					<span className="text-xs text-slate-600 ml-1 hover:text-blue-600">
+																					<span className="text-xs text-muted-foreground ml-1 hover:text-blue-600">
 																						{doctor.rating.toFixed(1)} ({doctor.reviewCount})
 																					</span>
 																				</div>
@@ -627,45 +666,52 @@ export function BookAppointmentForm({
 													<div className="flex justify-center py-4">
 														<Loader2 className="h-6 w-6 animate-spin" />
 													</div>
-												) : slots.length > 0 ? (
+												) : slots.filter(isBookableAppointmentSlot).length > 0 ? (
 													<div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
 														{slots
-															.filter((slot) => !slot.isBooked)
+															.filter(isBookableAppointmentSlot)
 															.map((slot) => {
-																const slotDate = new Date(slot.startTime);
-																const hours = slotDate.getUTCHours().toString().padStart(2, '0');
-																const minutes = slotDate.getUTCMinutes().toString().padStart(2, '0');
-																const slotTime = `${hours}:${minutes}`;
+																const slotTime = formatAppointmentTime(slot.startTime);
+																const boundServiceLabel = slotServiceLabel(slot);
 																return (
 																	<Button
 																		key={slot.id}
 																		type="button"
-																		disabled={slot.isBooked}
+																		disabled={!isBookableAppointmentSlot(slot)}
 																		variant={
 																			field.value === slotTime
 																				? "default"
 																				: "outline"
 																		}
-																		className={`h-auto min-h-[3rem] flex-col gap-0.5 py-2 px-1 ${
+																		className={cn(
+																			"h-auto py-2 px-1",
+																			boundServiceLabel &&
+																				"min-h-[3rem] flex-col gap-0.5",
 																			field.value === slotTime
 																				? "gradient-button"
 																				: "border-slate-300 hover:bg-slate-100 text-slate-800 hover-scale"
-																		}`}
+																		)}
 																		onClick={() => {
 																			field.onChange(slotTime);
 																			form.setValue("slot_id", slot.id);
+																			logSlotSelectionDebug(slot, {
+																				formTime: slotTime,
+																				formSlotId: slot.id,
+																			});
 																		}}
 																	>
 																		<span className="text-sm font-medium">{slotTime}</span>
-																		<span className="max-w-[5.5rem] truncate text-[10px] leading-tight opacity-80">
-																			{slotServiceLabel(slot)}
-																		</span>
+																		{boundServiceLabel ? (
+																			<span className="max-w-[5.5rem] truncate text-[10px] leading-tight opacity-80">
+																				{boundServiceLabel}
+																			</span>
+																		) : null}
 																	</Button>
 																);
 															})}
 													</div>
 												) : (
-													<div className="text-center text-slate-400 w-full py-4">
+													<div className="text-center text-muted-foreground w-full py-4">
 														На текущую дату нет
 														доступных слотов.
 														Пожалуйста выберите
@@ -714,7 +760,7 @@ export function BookAppointmentForm({
 									</h3>
 									<div className="mt-4 space-y-2">
 										<div className="flex justify-between">
-											<span className="text-slate-600">Способ записи:</span>
+											<span className="text-muted-foreground">Способ записи:</span>
 											<span>
 												{searchMode === "by_service"
 													? "По услуге"
@@ -723,7 +769,7 @@ export function BookAppointmentForm({
 										</div>
 										{searchMode === "by_specialty" && (
 											<div className="flex justify-between">
-												<span className="text-slate-600">Специальность:</span>
+												<span className="text-muted-foreground">Специальность:</span>
 												<span>
 													{specialties.find(
 														(s) => s.id.toString() === selectedSpecialty
@@ -732,7 +778,7 @@ export function BookAppointmentForm({
 											</div>
 										)}
 										<div className="flex justify-between">
-											<span className="text-slate-600">Услуга:</span>
+											<span className="text-muted-foreground">Услуга:</span>
 											<span className="text-right max-w-[60%]">
 												{serviceField?.trim()
 													? selectedServiceForSummary?.name ??
@@ -742,7 +788,7 @@ export function BookAppointmentForm({
 										</div>
 										{serviceField?.trim() && (
 											<div className="flex justify-between">
-												<span className="text-slate-600">
+												<span className="text-muted-foreground">
 													Стоимость услуги:
 												</span>
 												<span className="text-right font-medium max-w-[60%]">
@@ -755,35 +801,21 @@ export function BookAppointmentForm({
 											</div>
 										)}
 										<div className="flex justify-between">
-											<span className="text-slate-600">
+											<span className="text-muted-foreground">
 												Врач:
 											</span>
 											<span>
-												{
+												{formatUserFullName(
 													doctors.find(
 														(d) =>
 															d.id.toString() ===
 															selectedDoctor
-													)?.user.lastName
-												}{" "}
-												{
-													doctors.find(
-														(d) =>
-															d.id.toString() ===
-															selectedDoctor
-													)?.user.firstName
-												}{" "}
-												{
-													doctors.find(
-														(d) =>
-															d.id.toString() ===
-															selectedDoctor
-													)?.user.middleName
-												}
+													)?.user
+												)}
 											</span>
 										</div>
 										<div className="flex justify-between">
-											<span className="text-slate-600">
+											<span className="text-muted-foreground">
 												Дата и время:
 											</span>
 											<span>

@@ -109,7 +109,7 @@ export default function ForgotPasswordPage() {
 					<h1 className="text-3xl font-bold gradient-heading">
 						Клиника Менеджмент
 					</h1>
-					<p className="mt-2 text-slate-600">
+					<p className="mt-2 text-muted-foreground">
 						{token ? "Сброс пароля" : "Восстановление пароля"}
 					</p>
 				</div>
@@ -207,7 +207,7 @@ export default function ForgotPasswordPage() {
 								<div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
 									<Send className="h-6 w-6 text-green-600" />
 								</div>
-								<p className="text-slate-600">
+								<p className="text-muted-foreground">
 									Мы отправили инструкции по сбросу пароля на
 									адрес{" "}
 									<strong>
@@ -216,7 +216,7 @@ export default function ForgotPasswordPage() {
 									. Пожалуйста, проверьте вашу электронную
 									почту.
 								</p>
-								<p className="mt-4 text-sm text-slate-500">
+								<p className="mt-4 text-sm text-muted-foreground">
 									Не получили письмо?{" "}
 									<button
 										type="button"

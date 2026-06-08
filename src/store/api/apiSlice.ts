@@ -34,6 +34,7 @@ import type {
 	RegisterResponse,
 	RegisterWithPatientRequest,
 	Review,
+	SendLoginCredentialsRequest,
 	Room,
 	Schedule,
 	SetServiceSpecializationsRequest,
@@ -74,6 +75,8 @@ export const api = createApi({
 		"Specialization",
 		"Service",
 		"Diagnosis",
+		"AvailableSlot",
+		"AvailableDate",
 	],
 	endpoints: (build) => ({
 		login: build.mutation<LoginResponse, LoginRequest>({
@@ -243,6 +246,13 @@ export const api = createApi({
 			query: (id) => ({ url: `patients/${id}`, method: "DELETE" }),
 			invalidatesTags: [{ type: "Patient", id: "LIST" }],
 		}),
+		sendLoginCredentialsEmail: build.mutation<void, SendLoginCredentialsRequest>({
+			query: (body) => ({
+				url: "notifications/login-credentials",
+				method: "POST",
+				body,
+			}),
+		}),
 
 		getAppointments: build.query<Appointment[], AppointmentsQueryParams | void>({
 			query: (params) => ({ url: "appointments", params: params ?? undefined }),
@@ -288,6 +298,10 @@ export const api = createApi({
 				return { url: "appointments/available", params };
 			},
 			transformResponse: (r: unknown) => unwrapList<AvailableAppointmentSlot>(r),
+			providesTags: (_r, _e, { doctorId, date, serviceId }) => [
+				{ type: "AvailableSlot", id: "LIST" },
+				{ type: "AvailableSlot", id: `${doctorId}-${date}-${serviceId ?? "all"}` },
+			],
 		}),
 		getAvailableDates: build.query<
 			string[],
@@ -301,11 +315,19 @@ export const api = createApi({
 				return { url: "appointments/available/dates", params };
 			},
 			transformResponse: (r: unknown) => (Array.isArray(r) ? r : []) as string[],
+			providesTags: (_r, _e, { doctorId, serviceId }) => [
+				{ type: "AvailableDate", id: "LIST" },
+				{ type: "AvailableDate", id: `${doctorId}-${serviceId ?? "all"}` },
+			],
 		}),
 		createAppointment: build.mutation<Appointment, CreateAppointmentRequest>({
 			query: (body) => ({ url: "appointments", method: "POST", body }),
 			transformResponse: (r: unknown) => r as Appointment,
-			invalidatesTags: [{ type: "Appointment", id: "LIST" }],
+			invalidatesTags: [
+				{ type: "Appointment", id: "LIST" },
+				{ type: "AvailableSlot", id: "LIST" },
+				{ type: "AvailableDate", id: "LIST" },
+			],
 		}),
 		updateAppointment: build.mutation<Appointment, { id: number; body: UpdateAppointmentRequest }>({
 			async queryFn({ id, body }, apiCtx, extraOptions) {
@@ -338,12 +360,20 @@ export const api = createApi({
 			invalidatesTags: (_r, _e, { id }) => [
 				{ type: "Appointment", id },
 				{ type: "Appointment", id: "LIST" },
+				{ type: "AvailableSlot", id: "LIST" },
+				{ type: "AvailableDate", id: "LIST" },
 			],
 		}),
 		bookAppointment: build.mutation<Appointment, BookAppointmentRequest>({
 			query: (body) => ({ url: "appointments/book", method: "POST", body }),
 			transformResponse: (r: unknown) => r as Appointment,
-			invalidatesTags: [{ type: "Appointment", id: "LIST" }],
+			invalidatesTags: (r) => [
+				{ type: "Appointment", id: "LIST" },
+				{ type: "AvailableSlot", id: "LIST" },
+				{ type: "AvailableDate", id: "LIST" },
+				{ type: "Queue", id: "LIST" },
+				...(r?.doctorId ? [{ type: "Queue" as const, id: `doctor-${r.doctorId}` }] : []),
+			],
 		}),
 		cancelAppointment: build.mutation<CancelAppointmentResponse, { id: number; body?: CancelAppointmentRequest }>({
 			query: ({ id, body }) => ({
@@ -356,6 +386,8 @@ export const api = createApi({
 				{ type: "Appointment", id },
 				{ type: "Appointment", id: "LIST" },
 				{ type: "Queue", id: "LIST" },
+				{ type: "AvailableSlot", id: "LIST" },
+				{ type: "AvailableDate", id: "LIST" },
 			],
 		}),
 		completeAppointment: build.mutation<
@@ -372,6 +404,8 @@ export const api = createApi({
 				{ type: "Appointment", id },
 				{ type: "Appointment", id: "LIST" },
 				{ type: "Queue", id: "LIST" },
+				{ type: "AvailableSlot", id: "LIST" },
+				{ type: "AvailableDate", id: "LIST" },
 			],
 		}),
 		deleteAppointment: build.mutation<void, number>({
@@ -379,6 +413,8 @@ export const api = createApi({
 			invalidatesTags: (_r, _e, id) => [
 				{ type: "Appointment", id },
 				{ type: "Appointment", id: "LIST" },
+				{ type: "AvailableSlot", id: "LIST" },
+				{ type: "AvailableDate", id: "LIST" },
 			],
 		}),
 		sendAppointmentNotification: build.mutation<void, number>({
@@ -644,6 +680,7 @@ export const {
 	useCreatePatientMutation,
 	useUpdatePatientMutation,
 	useDeletePatientMutation,
+	useSendLoginCredentialsEmailMutation,
 	useGetAppointmentsQuery,
 	useGetAppointmentByIdQuery,
 	useGetAppointmentsByDoctorQuery,

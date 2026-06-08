@@ -52,6 +52,16 @@ import {
 } from "@/store/api/apiSlice";
 
 import { sortPatientAppointments } from "./sort-patient-appointments";
+import {
+	appointmentDoctorName,
+	appointmentDoctorSpecialty,
+	appointmentRoomName,
+} from "@/lib/appointment-display";
+import {
+	formatAppointmentDate,
+	formatAppointmentTime,
+	appointmentTimeMs,
+} from "@/lib/appointment-time";
 
 export default function PatientsPage() {
 	const { data: patients = [], isLoading, refetch: refetchPatients } = useGetPatientsQuery();
@@ -156,9 +166,8 @@ export default function PatientsPage() {
 		if (status === "cancelled") {
 			return false;
 		}
-		const now = new Date();
-		const appointmentDateTime = new Date(startTime);
-		return appointmentDateTime > now;
+		const appointmentDateTime = appointmentTimeMs(startTime);
+		return appointmentDateTime > Date.now();
 	};
 
 	return (
@@ -185,7 +194,7 @@ export default function PatientsPage() {
 							<div className="flex flex-col gap-4 md:flex-row">
 								<Input
 									placeholder="Поиск по ФИО или номеру полиса"
-									className="flex-1 border-slate-700"
+									className="flex-1 border-input"
 									value={searchQuery}
 									onChange={(e) =>
 										setSearchQuery(e.target.value)
@@ -202,7 +211,7 @@ export default function PatientsPage() {
 						<CardContent className="p-0">
 							<Table>
 								<TableHeader className="">
-									<TableRow className=" border-slate-700">
+									<TableRow className=" border-input">
 										<TableHead>ФИО</TableHead>
 										<TableHead>Дата рождения</TableHead>
 										<TableHead>Номер полиса</TableHead>
@@ -235,7 +244,7 @@ export default function PatientsPage() {
 										paginatedPatients.map((patient) => (
 											<TableRow
 												key={patient.id}
-												className=" border-slate-700"
+												className=" border-input"
 											>
 												<TableCell className="font-medium">
 													{patient.user.firstName}{" "}
@@ -319,8 +328,8 @@ export default function PatientsPage() {
 							</Table>
 							
 							{/* Добавляем пагинацию */}
-							<div className="flex items-center justify-between px-4 py-4 border-t border-slate-700">
-								<div className="text-sm text-slate-400">
+							<div className="flex items-center justify-between px-4 py-4 border-t border-input">
+								<div className="text-sm text-muted-foreground">
 									Показано {paginatedPatients.length} из {totalCount} пациентов
 								</div>
 								<div className="flex items-center gap-2">
@@ -329,7 +338,7 @@ export default function PatientsPage() {
 										size="sm"
 										onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
 										disabled={currentPage === 1}
-										className="border-slate-700"
+										className="border-input"
 									>
 										<ChevronLeft className="h-4 w-4" />
 									</Button>
@@ -341,7 +350,7 @@ export default function PatientsPage() {
 										size="sm"
 										onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
 										disabled={currentPage === totalPages}
-										className="border-slate-700"
+										className="border-input"
 									>
 										<ChevronRight className="h-4 w-4" />
 									</Button>
@@ -406,46 +415,31 @@ export default function PatientsPage() {
 															<div className="flex justify-between items-center">
 																<div>
 																	<p className="font-medium">
-																		Врач ID: {appointment.doctorId}
+																		{appointmentDoctorName(appointment)}
 																	</p>
-																	<p className="text-sm text-slate-600">
-																		Пациент ID: {appointment.patientId}
-																	</p>
+																	{appointmentDoctorSpecialty(appointment) ? (
+																		<p className="text-sm text-muted-foreground">
+																			{appointmentDoctorSpecialty(appointment)}
+																		</p>
+																	) : null}
 																	<p
 																		className={`text-sm ${
 																			canCancelAppointment(
 																				appointment.startTime,
 																				appointment.status
 																			)
-																				? "text-slate-600"
+																				? "text-muted-foreground"
 																				: "text-red-600"
 																		}`}
 																	>
-																		{new Date(
-																			appointment.startTime
-																		).toLocaleDateString(
-																			"ru-RU",
-																			{
-																				day: "numeric",
-																				month: "long",
-																				year: "numeric",
-																			}
-																		)}{" "}
+																		{formatAppointmentDate(appointment.startTime)}{" "}
 																		в{" "}
-																		{new Date(
-																			appointment.startTime
-																		).toLocaleTimeString(
-																			"ru-RU",
-																			{
-																				hour: "2-digit",
-																				minute: "2-digit",
-																			}
-																		)}
+																		{formatAppointmentTime(appointment.startTime)}
 																	</p>
 																</div>
 																<div className="flex flex-col items-end gap-2">
 																	<p className="text-sm">
-																		{appointment.roomId ? `Кабинет ${appointment.roomId}` : "Кабинет не указан"}
+																		{appointmentRoomName(appointment)}
 																	</p>
 																	{canCancelAppointment(
 																		appointment.startTime,
@@ -476,7 +470,7 @@ export default function PatientsPage() {
 																			Запись отменена
 																		</div>
 																	) : (
-																		<div className="px-3 py-1 text-sm rounded-md bg-slate-100 text-slate-600">
+																		<div className="px-3 py-1 text-sm rounded-md bg-slate-100 text-muted-foreground">
 																			Прием
 																			завершен
 																		</div>
@@ -488,7 +482,7 @@ export default function PatientsPage() {
 												)}
 											</div>
 										) : (
-											<div className="text-center py-8 text-slate-600">
+											<div className="text-center py-8 text-muted-foreground">
 												У пациента нет записей
 											</div>
 										)}

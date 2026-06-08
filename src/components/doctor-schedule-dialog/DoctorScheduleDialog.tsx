@@ -420,7 +420,7 @@ export function DoctorScheduleDialog({
 						<TabsContent value="manage" className="space-y-4 py-4">
 							{isLoading ? (
 								<div className="flex items-center justify-center py-8">
-									<Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+									<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 								</div>
 							) : activeWorkingHours.length > 0 ? (
 								<div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
@@ -446,15 +446,15 @@ export function DoctorScheduleDialog({
 																className={cn(
 																	"h-4 w-4",
 																	isPast
-																		? "text-slate-400"
-																		: "text-slate-500"
+																		? "text-muted-foreground"
+																		: "text-muted-foreground"
 																)}
 															/>
 															<span
 																className={cn(
 																	"font-medium",
 																	isPast &&
-																		"text-slate-500"
+																		"text-muted-foreground"
 																)}
 															>
 																{schedule.dateAt && format(
@@ -470,8 +470,8 @@ export function DoctorScheduleDialog({
 														className={cn(
 															"mt-1 flex items-center gap-4 text-sm",
 															isPast
-																? "text-slate-400"
-																: "text-slate-600"
+																? "text-muted-foreground"
+																: "text-muted-foreground"
 														)}
 													>
 														<span className="flex items-center gap-1">
@@ -488,7 +488,7 @@ export function DoctorScheduleDialog({
 													</div>
 													<div className="mt-2 flex flex-wrap gap-1">
 														{isPast && (
-															<Badge className="bg-slate-100 text-slate-500 border-slate-200">
+															<Badge className="bg-slate-100 text-muted-foreground border-slate-200">
 																Прошедший день
 															</Badge>
 														)}
@@ -501,7 +501,7 @@ export function DoctorScheduleDialog({
 														className={cn(
 															"h-8 w-8",
 															isPast
-																? "text-slate-400 hover:bg-slate-50 hover:text-slate-500 cursor-not-allowed"
+																? "text-muted-foreground hover:bg-slate-50 hover:text-muted-foreground cursor-not-allowed"
 																: "text-red-500 hover:bg-red-50 hover:text-red-600"
 														)}
 														onClick={() =>
@@ -534,7 +534,7 @@ export function DoctorScheduleDialog({
 									<h3 className="text-lg font-medium">
 										Нет расписания
 									</h3>
-									<p className="text-sm text-slate-500">
+									<p className="text-sm text-muted-foreground">
 										У этого врача еще не создано расписание.
 										Создайте его на вкладке "Создать
 										расписание".
@@ -728,7 +728,7 @@ export function DoctorScheduleDialog({
 											<Label>
 												Предварительный просмотр слотов
 											</Label>
-											<span className="text-sm text-slate-500">
+											<span className="text-sm text-muted-foreground">
 												Всего слотов: {timeSlots.length}
 											</span>
 										</div>
@@ -739,7 +739,7 @@ export function DoctorScheduleDialog({
 														key={slot}
 														className="flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-sm"
 													>
-														<Clock className="mr-1 h-3 w-3 text-slate-500" />
+														<Clock className="mr-1 h-3 w-3 text-muted-foreground" />
 														{slot}
 													</div>
 												))}

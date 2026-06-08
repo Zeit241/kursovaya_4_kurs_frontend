@@ -87,7 +87,7 @@ export default function LoginPage() {
 					<h1 className="text-3xl font-bold gradient-heading">
 						Клиника Менеджмент
 					</h1>
-					<p className="mt-2 text-slate-600">
+					<p className="mt-2 text-muted-foreground">
 						Войдите в свою учетную запись
 					</p>
 				</div>
@@ -193,12 +193,12 @@ export default function LoginPage() {
 					<CardFooter className="flex flex-col space-y-4">
 						<div className="relative flex w-full items-center justify-center">
 							<div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-200"></div>
-							<span className="relative bg-white px-2 text-sm text-slate-500">
+							<span className="relative bg-white px-2 text-sm text-muted-foreground">
 								или
 							</span>
 						</div>
 
-						<p className="text-center text-sm text-slate-600">
+						<p className="text-center text-sm text-muted-foreground">
 							Нет учетной записи?{" "}
 							<Link
 								to="/auth/register"

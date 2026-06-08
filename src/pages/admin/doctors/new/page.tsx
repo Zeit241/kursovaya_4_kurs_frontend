@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { PatternFormat } from "react-number-format";
 import { Link } from "react-router-dom";
@@ -29,6 +29,12 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
+import {
+	CredentialsDisplay,
+	type GeneratedCredentials,
+} from "@/components/admin/CredentialsDisplay";
+import { PostRegistrationActionsDialog } from "@/components/admin/PostRegistrationActionsDialog";
+import { generateRandomPassword } from "@/lib/generatePassword";
 import { useCreateDoctorMutation, useGetSpecializationsQuery } from "@/store/api/apiSlice";
 const doctorSchema = z.object({
 	lastName: z.string().min(2, "Фамилия должна содержать минимум 2 символа"),
@@ -61,6 +67,13 @@ export default function NewDoctorPage() {
 		useGetSpecializationsQuery();
 	const [createDoctor] = useCreateDoctorMutation();
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [currentStep, setCurrentStep] = useState(1);
+	const [credentials, setCredentials] = useState<GeneratedCredentials | null>(
+		null,
+	);
+	const [showPostRegistrationDialog, setShowPostRegistrationDialog] =
+		useState(false);
+	const [recipientName, setRecipientName] = useState("");
 	const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 	const [isPhotoUploading, setIsPhotoUploading] = useState(false);
 
@@ -114,9 +127,23 @@ export default function NewDoctorPage() {
 	};
 
 	const onSubmit = async (data: DoctorFormData) => {
+		if (currentStep === 1) {
+			setCredentials({
+				login: data.email,
+				password: generateRandomPassword(),
+			});
+			setCurrentStep(2);
+			return;
+		}
+
+		if (!credentials?.password) {
+			toast.error("Не удалось сформировать пароль. Вернитесь на предыдущий шаг.");
+			setCurrentStep(1);
+			return;
+		}
+
 		setIsSubmitting(true);
 		try {
-			// Формируем displayName из ФИО
 			const displayName = [
 				data.lastName,
 				data.firstName,
@@ -125,8 +152,8 @@ export default function NewDoctorPage() {
 				.filter(Boolean)
 				.join(" ");
 
-			// Формируем запрос согласно API
 			const requestData = {
+				password: credentials.password,
 				user: {
 					email: data.email,
 					...(data.phone && { phone: data.phone }),
@@ -147,7 +174,9 @@ export default function NewDoctorPage() {
 			};
 
 			await createDoctor(requestData).unwrap();
-			navigate("/admin/doctors");
+
+			setRecipientName(displayName);
+			setShowPostRegistrationDialog(true);
 			toast.success("Врач добавлен", {
 				description: "Новый врач успешно добавлен в систему",
 			});
@@ -179,8 +208,22 @@ export default function NewDoctorPage() {
 		}
 	};
 
+	const handleBackToList = () => {
+		setShowPostRegistrationDialog(false);
+		navigate("/admin/doctors");
+	};
+
 	return (
 		<div className="flex flex-1 flex-col gradient-bg">
+			{credentials && (
+				<PostRegistrationActionsDialog
+					open={showPostRegistrationDialog}
+					credentials={credentials}
+					recipientName={recipientName}
+					recipientLabel="врачу"
+					onBack={handleBackToList}
+				/>
+			)}
 			<main className=" py-8">
 				<div className="container mx-auto px-4">
 					<div className="mb-8">
@@ -198,12 +241,42 @@ export default function NewDoctorPage() {
 					<Card className="mx-auto max-w-2xl gradient-card">
 						<div className="h-1 w-full bg-gradient-to-r from-blue-500 via-purple-500 to-teal-500"></div>
 						<CardHeader>
-							<CardTitle>Информация о враче</CardTitle>
+							<CardTitle>
+								{currentStep === 1
+									? "Информация о враче"
+									: "Данные для входа"}
+							</CardTitle>
 							<CardDescription>
-								Введите данные нового врача
+								{currentStep === 1
+									? "Введите данные нового врача"
+									: "Проверьте сгенерированные данные для входа"}
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
+							{currentStep === 2 && credentials ? (
+								<div>
+									<CredentialsDisplay credentials={credentials} />
+									<div className="flex justify-end gap-4 mt-6">
+										<Button
+											type="button"
+											variant="outline"
+											onClick={() => setCurrentStep(1)}
+											className="border-input"
+										>
+											Назад
+										</Button>
+										<Button
+											onClick={handleSubmit(onSubmit)}
+											disabled={isSubmitting}
+											className="gradient-button"
+										>
+											{isSubmitting
+												? "Сохранение..."
+												: "Завершить"}
+										</Button>
+									</div>
+								</div>
+							) : (
 							<form
 								onSubmit={handleSubmit(onSubmit)}
 								className="space-y-6"
@@ -217,7 +290,7 @@ export default function NewDoctorPage() {
 											id="lastName"
 											placeholder="Иванов"
 											{...register("lastName")}
-											className="border-slate-700"
+											className="border-input"
 										/>
 										{errors.lastName && (
 											<p className="text-sm text-red-500">
@@ -231,7 +304,7 @@ export default function NewDoctorPage() {
 											id="firstName"
 											placeholder="Иван"
 											{...register("firstName")}
-											className="border-slate-700"
+											className="border-input"
 										/>
 										{errors.firstName && (
 											<p className="text-sm text-red-500">
@@ -249,7 +322,7 @@ export default function NewDoctorPage() {
 										id="middleName"
 										placeholder="Иванович"
 										{...register("middleName")}
-										className="border-slate-700"
+										className="border-input"
 									/>
 									{errors.middleName && (
 										<p className="text-sm text-red-500">
@@ -272,7 +345,7 @@ export default function NewDoctorPage() {
 													{...field}
 													id="phone"
 													placeholder="+7 (900) 123-45-67"
-													className="border-slate-700"
+													className="border-input"
 													onValueChange={(values) =>
 														field.onChange(
 															values.formattedValue
@@ -294,7 +367,7 @@ export default function NewDoctorPage() {
 											type="email"
 											placeholder="doctor@clinic.ru"
 											{...register("email")}
-											className="border-slate-700"
+											className="border-input"
 										/>
 										{errors.email && (
 											<p className="text-sm text-red-500">
@@ -313,7 +386,7 @@ export default function NewDoctorPage() {
 										type="number"
 										placeholder="10"
 										{...register("experienceYears")}
-										className="border-slate-700"
+										className="border-input"
 									/>
 									{errors.experienceYears && (
 										<p className="text-sm text-red-500">
@@ -328,7 +401,7 @@ export default function NewDoctorPage() {
 										id="bio"
 										placeholder="О враче"
 										{...register("bio")}
-										className="border-slate-700"
+										className="border-input"
 										maxLength={50}
 									/>
 									{errors.bio && (
@@ -354,10 +427,10 @@ export default function NewDoctorPage() {
 											accept="image/*"
 											onChange={handlePhotoChange}
 											disabled={isPhotoUploading}
-											className="border-slate-700"
+											className="border-input"
 										/>
 									</div>
-									<p className="text-xs text-slate-500">
+									<p className="text-xs text-muted-foreground">
 										Directus: VITE_DIRECTUS_URL, VITE_DIRECTUS_STATIC_TOKEN. Максимум 5MB.
 									</p>
 								</div>
@@ -373,7 +446,7 @@ export default function NewDoctorPage() {
 													<button
 														type="button"
 														className={cn(
-															"flex h-10 w-full items-center justify-between rounded-md border border-slate-700 bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+															"flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
 															!field.value || field.value.length === 0
 																? "text-muted-foreground"
 																: "text-foreground"
@@ -495,7 +568,7 @@ export default function NewDoctorPage() {
 												return (
 													<span
 														key={id}
-														className="inline-flex items-center rounded-md bg-slate-800 px-2 py-1 text-xs font-medium text-slate-200"
+														className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground"
 													>
 														{specialization.name}
 														<button
@@ -512,7 +585,7 @@ export default function NewDoctorPage() {
 																	{ shouldValidate: true }
 																);
 															}}
-															className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-slate-700"
+															className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-muted"
 														>
 															×
 														</button>
@@ -528,21 +601,20 @@ export default function NewDoctorPage() {
 									<Button
 										variant="outline"
 										asChild
-										className="border-slate-700 hover:"
+										className="border-input hover:"
 									>
 										<Link to="/admin/doctors">Отмена</Link>
 									</Button>
 									<Button
 										type="submit"
-										disabled={isSubmitting}
+										disabled={isSubmitting || isPhotoUploading}
 										className="gradient-button"
 									>
-										{isSubmitting
-											? "Сохранение..."
-											: "Сохранить"}
+										Далее
 									</Button>
 								</div>
 							</form>
+							)}
 						</CardContent>
 					</Card>
 				</div>

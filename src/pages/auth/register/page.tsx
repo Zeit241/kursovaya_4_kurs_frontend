@@ -147,7 +147,7 @@ export default function RegisterPage() {
 					<h1 className="text-3xl font-bold gradient-heading">
 						Клиника Менеджмент
 					</h1>
-					<p className="mt-2 text-slate-600">
+					<p className="mt-2 text-muted-foreground">
 						Создайте новую учетную запись
 					</p>
 				</div>
@@ -345,7 +345,7 @@ export default function RegisterPage() {
 						</form>
 					</CardContent>
 					<CardFooter className="flex flex-col space-y-4">
-						<p className="text-center text-sm text-slate-600">
+						<p className="text-center text-sm text-muted-foreground">
 							Уже есть учетная запись?{" "}
 							<Link
 								to="/auth/login"

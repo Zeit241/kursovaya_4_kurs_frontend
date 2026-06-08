@@ -31,6 +31,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import React from "react";
 
+import {
+	CredentialsDisplay,
+	type GeneratedCredentials,
+} from "@/components/admin/CredentialsDisplay";
+import { PostRegistrationActionsDialog } from "@/components/admin/PostRegistrationActionsDialog";
+import { generateRandomPassword } from "@/lib/generatePassword";
+
 const patientSchema = z.object({
 	lastName: z.string().min(2, "Фамилия должна содержать минимум 2 символа").default(""),
 	firstName: z.string().min(2, "Имя должно содержать минимум 2 символа").default(""),
@@ -55,73 +62,14 @@ const patientSchema = z.object({
 
 type PatientFormValues = z.infer<typeof patientSchema>;
 
-interface GeneratedCredentials {
-	login: string;
-	password: string;
-}
-
-const generateRandomPassword = () => {
-	const lowercase = "abcdefghijklmnopqrstuvwxyz";
-	const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-	const numbers = "0123456789";
-	const all = lowercase + uppercase + numbers;
-
-	// Генерируем случайные числа с помощью Web Crypto API
-	const array = new Uint32Array(12);
-	window.crypto.getRandomValues(array);
-
-	// Обеспечиваем наличие как минимум одного символа каждого типа
-	let password = "";
-	password += lowercase[array[0] % lowercase.length];
-	password += uppercase[array[1] % uppercase.length];
-	password += numbers[array[2] % numbers.length];
-
-	// Добавляем остальные случайные символы
-	for (let i = 4; i < 12; i++) {
-		password += all[array[i] % all.length];
-	}
-
-	// Перемешиваем пароль
-	return password
-		.split("")
-		.sort(() => 0.5 - Math.random())
-		.join("");
-};
-
-const StepTwo = ({ credentials }: { credentials: GeneratedCredentials }) => {
-	return (
-		<div className="space-y-6">
-			<div className="text-center mb-6">
-				<h3 className="text-xl font-semibold mb-2">
-					Данные для входа в систему
-				</h3>
-				<p className="text-gray-600">
-					Сохраните эти данные, они понадобятся для входа в систему
-				</p>
-			</div>
-			<div className="space-y-4 p-6 border rounded-lg bg-gray-50">
-				<div>
-					<Label className="text-sm font-medium">Логин (Email):</Label>
-					<div className="mt-1 p-3 bg-white border rounded-md">
-						{credentials.login}
-					</div>
-				</div>
-				<div>
-					<Label className="text-sm font-medium">Пароль:</Label>
-					<div className="mt-1 p-3 bg-white border rounded-md font-mono">
-						{credentials.password}
-					</div>
-				</div>
-			</div>
-		</div>
-	);
-};
-
 export default function NewPatientPage() {
 	const [createPatient] = useCreatePatientMutation();
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [currentStep, setCurrentStep] = useState(1);
 	const [credentials, setCredentials] = useState<GeneratedCredentials | null>(null);
+	const [showPostRegistrationDialog, setShowPostRegistrationDialog] =
+		useState(false);
+	const [recipientName, setRecipientName] = useState("");
 	const navigate = useNavigate();
 
 	const form = useForm<PatientFormValues>({
@@ -151,12 +99,17 @@ export default function NewPatientPage() {
 			return;
 		}
 
-		// Если второй шаг - создаем пациента
+		if (!credentials?.password) {
+			toast.error("Не удалось сформировать пароль. Вернитесь на предыдущий шаг.");
+			setCurrentStep(1);
+			return;
+		}
+
 		setIsSubmitting(true);
 
 		try {
-			// Создаем пациента с данными пользователя
 			await createPatient({
+				password: credentials.password,
 				user: {
 					email: data.email || "",
 					phone: data.phone,
@@ -169,10 +122,13 @@ export default function NewPatientPage() {
 				insuranceNumber: data.policyNumber,
 			}).unwrap();
 
+			setRecipientName(
+				[data.lastName, data.firstName, data.middleName].filter(Boolean).join(" "),
+			);
+			setShowPostRegistrationDialog(true);
 			toast.success("Пациент добавлен", {
 				description: "Новый пациент успешно добавлен в систему",
 			});
-			navigate("/admin/patients");
 		} catch (error: any) {
 			if (error.response?.data) {
 				const errors = error.response.data;
@@ -195,8 +151,22 @@ export default function NewPatientPage() {
 		}
 	};
 
+	const handleBackToList = () => {
+		setShowPostRegistrationDialog(false);
+		navigate("/admin/patients");
+	};
+
 	return (
 		<div className="flex flex-1 flex-col">
+			{credentials && (
+				<PostRegistrationActionsDialog
+					open={showPostRegistrationDialog}
+					credentials={credentials}
+					recipientName={recipientName}
+					recipientLabel="пациенту"
+					onBack={handleBackToList}
+				/>
+			)}
 			<main className="py-8">
 				<div className="container mx-auto px-4">
 					<div className="mb-8">
@@ -244,7 +214,7 @@ export default function NewPatientPage() {
 														<FormControl>
 															<Input
 																placeholder="Иванов"
-																className=" border-slate-700"
+																className=" border-input"
 																{...field}
 															/>
 														</FormControl>
@@ -263,7 +233,7 @@ export default function NewPatientPage() {
 														<FormControl>
 															<Input
 																placeholder="Иван"
-																className=" border-slate-700"
+																className=" border-input"
 																{...field}
 															/>
 														</FormControl>
@@ -285,7 +255,7 @@ export default function NewPatientPage() {
 														<FormControl>
 															<Input
 																placeholder="Иванович"
-																className=" border-slate-700"
+																className=" border-input"
 																{...field}
 															/>
 														</FormControl>
@@ -304,7 +274,7 @@ export default function NewPatientPage() {
 														<FormControl>
 															<Input
 																type="date"
-																className=" border-slate-700"
+																className=" border-input"
 																{...field}
 															/>
 														</FormControl>
@@ -370,7 +340,7 @@ export default function NewPatientPage() {
 																format="+7 (###) ###-##-##"
 																mask="_"
 																placeholder="+7 (900) 123-45-67"
-																className="border-slate-700"
+																className="border-input"
 																value={
 																	field.value
 																}
@@ -399,7 +369,7 @@ export default function NewPatientPage() {
 															<Input
 																type="email"
 																placeholder="patient@example.com"
-																className="border-slate-700"
+																className="border-input"
 																{...field}
 															/>
 														</FormControl>
@@ -425,7 +395,7 @@ export default function NewPatientPage() {
 															format="#### #### #### ####"
 															mask="_"
 															placeholder="1234 5678 9012 3456"
-															className="border-slate-700"
+															className="border-input"
 															value={
 																field.value
 															}
@@ -450,7 +420,7 @@ export default function NewPatientPage() {
 											<Button
 												variant="outline"
 												asChild
-												className="border-slate-700 hover:"
+												className="border-input hover:"
 											>
 												<Link to="/admin/patients">
 													Отмена
@@ -467,12 +437,12 @@ export default function NewPatientPage() {
 								</Form>
 							) : credentials ? (
 								<div>
-									<StepTwo credentials={credentials} />
+									<CredentialsDisplay credentials={credentials} />
 									<div className="flex justify-end gap-4 mt-6">
 										<Button
 											variant="outline"
 											onClick={() => setCurrentStep(1)}
-											className="border-slate-700"
+											className="border-input"
 										>
 											Назад
 										</Button>

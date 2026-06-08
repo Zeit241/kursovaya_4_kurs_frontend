@@ -1,4 +1,5 @@
 import type { Appointment, Diagnosis } from "@/api/types";
+import { formatDiagnosisItemLabel } from "@/components/appointment-details-dialog/appointment-display-helpers";
 import { Button } from "@/components/ui/button";
 import {
 	Command,
@@ -22,10 +23,10 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { formatAppointmentDateTime } from "@/lib/appointment-time";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
 import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
-import { patientShortName } from "./doctor-appointments-utils";
+import { patientShortName, roomDisplayName } from "./doctor-appointments-utils";
 
 interface CompleteAppointmentDialogProps {
 	open: boolean;
@@ -58,6 +59,10 @@ export function CompleteAppointmentDialog({
 	onCancel,
 	onConfirm,
 }: CompleteAppointmentDialogProps) {
+	const room = selectedAppointment
+		? roomDisplayName(selectedAppointment.room)
+		: null;
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent ref={dialogContentRef} className="sm:max-w-lg">
@@ -69,45 +74,70 @@ export function CompleteAppointmentDialog({
 					</DialogDescription>
 				</DialogHeader>
 				{selectedAppointment && (
-					<div className="space-y-2 text-sm text-slate-600">
+					<div className="space-y-1.5 rounded-lg border bg-muted/40 p-3 text-sm">
 						<p>
-							<strong>Время:</strong>{" "}
-							{format(new Date(selectedAppointment.startTime), "dd.MM HH:mm")}
+							<span className="text-muted-foreground">Время: </span>
+							<span className="font-medium">
+								{formatAppointmentDateTime(
+									selectedAppointment.startTime,
+									"dd.MM.yyyy HH:mm"
+								)}
+								{" — "}
+								{formatAppointmentDateTime(selectedAppointment.endTime, "HH:mm")}
+							</span>
 						</p>
 						<p>
-							<strong>Пациент:</strong> {patientShortName(selectedAppointment)}
+							<span className="text-muted-foreground">Пациент: </span>
+							<span className="font-medium">
+								{patientShortName(selectedAppointment)}
+							</span>
 						</p>
+						{selectedAppointment.service?.name && (
+							<p>
+								<span className="text-muted-foreground">Услуга: </span>
+								{selectedAppointment.service.name}
+							</p>
+						)}
+						{room && (
+							<p>
+								<span className="text-muted-foreground">Кабинет: </span>
+								{room}
+							</p>
+						)}
 					</div>
 				)}
 				<div className="space-y-2">
 					<Label>Диагноз</Label>
-					<Popover open={comboOpen} onOpenChange={onComboOpenChange}>
+					<Popover open={comboOpen} onOpenChange={onComboOpenChange} modal>
 						<PopoverTrigger asChild>
 							<Button
 								variant="outline"
 								role="combobox"
 								aria-expanded={comboOpen}
-								className="w-full justify-between font-normal"
+								className="h-auto min-h-10 w-full justify-between gap-2 py-2 font-normal"
 							>
-								{selectedDiagnosis
-									? `${selectedDiagnosis.code} — ${selectedDiagnosis.name}`
-									: "Найти по коду или названию…"}
-								<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+								<span className="line-clamp-2 text-left">
+									{selectedDiagnosis
+										? formatDiagnosisItemLabel(selectedDiagnosis)
+										: "Найти по коду или названию…"}
+								</span>
+								<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
 							</Button>
 						</PopoverTrigger>
 						<PopoverContent
 							container={completeDialogEl}
-							className="w-[var(--radix-popover-trigger-width)] p-0"
+							className="z-[100] w-[var(--radix-popover-trigger-width)] p-0"
+							align="start"
 						>
 							<Command>
 								<CommandInput placeholder="Поиск…" />
-								<CommandList>
+								<CommandList className="max-h-[min(16rem,50vh)]">
 									<CommandEmpty>Не найдено</CommandEmpty>
 									<CommandGroup>
 										{diagnoses.map((d) => (
 											<CommandItem
 												key={d.id}
-												value={`${d.code} ${d.name}`}
+												value={`${formatDiagnosisItemLabel(d)} ${d.code}`}
 												onSelect={() => {
 													onSelectDiagnosis(d);
 													onComboOpenChange(false);
@@ -115,14 +145,14 @@ export function CompleteAppointmentDialog({
 											>
 												<Check
 													className={cn(
-														"mr-2 h-4 w-4",
+														"mr-2 h-4 w-4 shrink-0",
 														selectedDiagnosis?.id === d.id
 															? "opacity-100"
 															: "opacity-0"
 													)}
 												/>
 												<span className="truncate">
-													{d.code} — {d.name}
+													{formatDiagnosisItemLabel(d)}
 												</span>
 											</CommandItem>
 										))}
@@ -136,7 +166,7 @@ export function CompleteAppointmentDialog({
 					<Button variant="outline" onClick={onCancel} disabled={submitting}>
 						Отмена
 					</Button>
-					<Button onClick={onConfirm} disabled={submitting}>
+					<Button onClick={onConfirm} disabled={submitting || !selectedDiagnosis}>
 						{submitting ? (
 							<Loader2 className="h-4 w-4 animate-spin" />
 						) : (

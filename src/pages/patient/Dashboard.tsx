@@ -12,6 +12,16 @@ import {
 } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatClinicServicePriceFromFields } from "@/lib/format-clinic-service-price";
+import {
+	appointmentDoctorName,
+	appointmentDoctorSpecialty,
+	appointmentRoomName,
+} from "@/lib/appointment-display";
+import {
+	formatAppointmentDate,
+	formatAppointmentTime,
+	appointmentTimeMs,
+} from "@/lib/appointment-time";
 import { useMemo } from "react";
 
 import {
@@ -35,10 +45,9 @@ export default function PatientDashboard() {
 
 	const upcomingAppointments = useMemo(() => {
 		if (!patientId) return [] as Appointment[];
-		const now = new Date();
+		const now = Date.now();
 		return allAppointments.filter((apt) => {
-			const aptDate = new Date(apt.startTime);
-			return aptDate > now && apt.status === "scheduled";
+			return appointmentTimeMs(apt.startTime) > now && apt.status === "scheduled";
 		});
 	}, [allAppointments, patientId]);
 
@@ -50,7 +59,7 @@ export default function PatientDashboard() {
 						<h2 className="text-3xl font-bold gradient-heading">
 							Добро пожаловать, {user?.firstName}!
 						</h2>
-						<p className="mt-2 text-slate-600">
+						<p className="mt-2 text-muted-foreground">
 							Управляйте своими медицинскими записями и
 							записывайтесь на приём онлайн
 						</p>
@@ -73,18 +82,16 @@ export default function PatientDashboard() {
 										// Преобразуем данные для отображения
 										const appointmentData = {
 											id: appointment.id,
-											doctor_name: appointment.doctor?.displayName ||
-												`${appointment.doctor?.user?.lastName || ""} ${appointment.doctor?.user?.firstName || ""} ${appointment.doctor?.user?.middleName || ""}`.trim() ||
-												"Врач не указан",
-											doctor_specialty: appointment.doctor?.specializations?.[0]?.name ||
-												appointment.doctor?.specialization ||
+											doctor_name: appointmentDoctorName(appointment),
+											doctor_specialty:
+												appointmentDoctorSpecialty(appointment) ||
 												"Специальность не указана",
-											office_number: appointment.room?.code ||
-												appointment.room?.name ||
-												appointment.roomId?.toString() ||
-												"Не указан",
-											appointment_date: appointment.startTime.split('T')[0],
-											appointment_time: new Date(appointment.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+											office_number: appointmentRoomName(appointment),
+											appointment_date: formatAppointmentDate(
+												appointment.startTime,
+												"yyyy-MM-dd"
+											),
+											appointment_time: formatAppointmentTime(appointment.startTime),
 											service_name: appointment.service?.name ?? null,
 											service_price_label: appointment.service
 												? formatClinicServicePriceFromFields(appointment.service.price)
@@ -114,7 +121,7 @@ export default function PatientDashboard() {
 								{!isLoading &&
 									upcomingAppointments?.length === 0 && (
 										<div className="flex items-center justify-center pb-4">
-											<p className="text-slate-500">
+											<p className="text-muted-foreground">
 												Нет ближайших приемов
 											</p>
 										</div>
@@ -133,7 +140,7 @@ export default function PatientDashboard() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<p className="mb-4 text-slate-600">
+								<p className="mb-4 text-muted-foreground">
 									Просмотр истории и предстоящих приёмов
 								</p>
 								<Button
@@ -156,7 +163,7 @@ export default function PatientDashboard() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<p className="mb-4 text-slate-600">
+								<p className="mb-4 text-muted-foreground">
 									Запишитесь на приём к нужному специалисту
 								</p>
 								<Button
@@ -179,7 +186,7 @@ export default function PatientDashboard() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<p className="mb-4 text-slate-600">
+								<p className="mb-4 text-muted-foreground">
 									Управление личными данными и настройками
 								</p>
 								<Button
@@ -236,11 +243,11 @@ export function AppointmentCard({
 							{appointment.doctor_specialty} -{" "}
 							{appointment.doctor_name}
 						</h3>
-						<p className="text-slate-600">
-							Кабинет {appointment.office_number}
+						<p className="text-muted-foreground">
+							{appointment.office_number}
 						</p>
 						{appointment.service_name ? (
-							<p className="mt-1 text-sm text-slate-600">
+							<p className="mt-1 text-sm text-muted-foreground">
 								Услуга:{" "}
 								<span className="font-medium text-foreground">
 									{appointment.service_name}

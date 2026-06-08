@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format } from "date-fns";
 import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -52,6 +51,11 @@ import {
 	formatDiagnosisDisplay,
 	statusLabels,
 } from "./appointment-display-helpers";
+import {
+	appointmentDoctorName,
+	appointmentRoomName,
+} from "@/lib/appointment-display";
+import { formatAppointmentDateTime } from "@/lib/appointment-time";
 import {
 	formSchema,
 	reviewFormSchema,
@@ -303,8 +307,8 @@ export function AppointmentDetailsDialog({
 										Дата и время
 									</h4>
 									<p>
-										{format(
-											new Date(localAppointment.startTime),
+										{formatAppointmentDateTime(
+											localAppointment.startTime,
 											"dd.MM.yyyy HH:mm"
 										)}
 									</p>
@@ -317,36 +321,36 @@ export function AppointmentDetailsDialog({
 										{statusLabels[localAppointment.status]}
 									</Badge>
 								</div>
-								<div>
-									<h4 className="font-medium text-sm">
-										Пациент
-									</h4>
-									<p>
-										{patient ? (
-											<>
-												{patient.user.lastName}{" "}
-												{patient.user.firstName}{" "}
-												{patient.user.middleName}
-											</>
-										) : (
-											localAppointment.patientId ? `Пациент ID: ${localAppointment.patientId}` : "-"
-										)}
-									</p>
-								</div>
+								{!isPatientView && (
+									<div>
+										<h4 className="font-medium text-sm">
+											Пациент
+										</h4>
+										<p>
+											{patient ? (
+												<>
+													{patient.user.lastName}{" "}
+													{patient.user.firstName}{" "}
+													{patient.user.middleName}
+												</>
+											) : localAppointment.patient?.fullName ? (
+												localAppointment.patient.fullName
+											) : (
+												localAppointment.patientId
+													? `Пациент #${localAppointment.patientId}`
+													: "-"
+											)}
+										</p>
+									</div>
+								)}
 								<div>
 									<h4 className="font-medium text-sm">
 										Врач
 									</h4>
 									<p>
-										{doctor ? (
-											<>
-												{doctor.user.lastName}{" "}
-												{doctor.user.firstName}{" "}
-												{doctor.user.middleName}
-											</>
-										) : (
-											`Врач ID: ${localAppointment.doctorId}`
-										)}
+										{doctor
+											? `${doctor.user.lastName} ${doctor.user.firstName} ${doctor.user.middleName || ""}`.trim()
+											: appointmentDoctorName(localAppointment)}
 									</p>
 								</div>
 								<div>
@@ -365,9 +369,7 @@ export function AppointmentDetailsDialog({
 									<h4 className="font-medium text-sm">
 										Кабинет
 									</h4>
-									<p>
-										{localAppointment.roomId || "-"}
-									</p>
+									<p>{appointmentRoomName(localAppointment)}</p>
 								</div>
 							</div>
 
@@ -384,7 +386,7 @@ export function AppointmentDetailsDialog({
 								<div className="mt-4 border-t pt-4">
 									<h4 className="font-medium text-sm mb-3">Оценка приёма</h4>
 									{isLoadingReview ? (
-										<p className="text-sm text-slate-500">Загрузка отзыва...</p>
+										<p className="text-sm text-muted-foreground">Загрузка отзыва...</p>
 									) : showReviewForm ? (
 										<Form {...reviewForm}>
 											<form
@@ -415,7 +417,7 @@ export function AppointmentDetailsDialog({
 																			/>
 																		</button>
 																	))}
-																	<span className="ml-2 text-sm text-slate-600">
+																	<span className="ml-2 text-sm text-muted-foreground">
 																		{field.value} из 5
 																	</span>
 																</div>
@@ -477,12 +479,12 @@ export function AppointmentDetailsDialog({
 														}`}
 													/>
 												))}
-												<span className="ml-2 text-sm text-slate-600">
+												<span className="ml-2 text-sm text-muted-foreground">
 													{review.rating} из 5
 												</span>
 											</div>
 											{review.reviewText && (
-												<p className="text-sm text-slate-600 mt-2">
+												<p className="text-sm text-muted-foreground mt-2">
 													{review.reviewText}
 												</p>
 											)}

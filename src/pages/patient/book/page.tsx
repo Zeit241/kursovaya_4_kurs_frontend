@@ -73,7 +73,7 @@ export default function BookAppointmentPage() {
 						<h2 className="text-3xl font-bold gradient-heading">
 							Запись на приём
 						</h2>
-						<p className="mt-2 text-slate-600">
+						<p className="mt-2 text-muted-foreground">
 							Выберите специалиста и удобное время
 						</p>
 					</div>
@@ -90,7 +90,7 @@ export default function BookAppointmentPage() {
 							}}
 						/>
 					) : (
-						<div className="text-center py-8 text-slate-600">
+						<div className="text-center py-8 text-muted-foreground">
 							Не удалось загрузить данные пациента
 						</div>
 					)}

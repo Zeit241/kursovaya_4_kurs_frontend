@@ -1,4 +1,5 @@
 import type { Appointment } from "@/api/types";
+import { formatAppointmentTime } from "@/lib/appointment-time";
 import { CalendarDays, ClipboardList, Users } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -219,7 +220,7 @@ export default function AdminDashboard() {
 											return (
 												<div
 													key={appointment.id}
-													className="flex items-center justify-between rounded-lg border border-slate-800 p-3 transition-all hover:border-blue-900/50 hover:bg-slate-800/50"
+													className="flex items-center justify-between rounded-lg border border-border p-3 transition-all hover:border-primary/30 hover:bg-muted/50"
 												>
 													<div>
 														<p className="font-medium">
@@ -231,7 +232,7 @@ export default function AdminDashboard() {
 													</div>
 													<div className="text-right">
 														<p className="font-medium">
-															{new Date(appointment.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+															{formatAppointmentTime(appointment.startTime)}
 														</p>
 														<p className="text-sm text-muted-foreground">
 															{roomName}

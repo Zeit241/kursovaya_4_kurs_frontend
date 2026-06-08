@@ -87,7 +87,7 @@ export function DoctorReviewsDialog({
 						<Loader2 className="h-8 w-8 animate-spin text-blue-600" />
 					</div>
 				) : reviews.length === 0 ? (
-					<div className="text-center py-8 text-slate-500">
+					<div className="text-center py-8 text-muted-foreground">
 						Пока нет отзывов об этом враче
 					</div>
 				) : (
@@ -116,7 +116,7 @@ export function DoctorReviewsDialog({
 										</span>
 									</div>
 									<div className="flex items-center gap-2">
-										<span className="text-xs text-slate-500">
+										<span className="text-xs text-muted-foreground">
 											{format(
 												new Date(review.createdAt),
 												"dd MMMM yyyy",
@@ -136,7 +136,7 @@ export function DoctorReviewsDialog({
 									</div>
 								</div>
 								{review.reviewText && (
-									<p className="text-sm text-slate-600 mt-2">
+									<p className="text-sm text-muted-foreground mt-2">
 										{review.reviewText}
 									</p>
 								)}

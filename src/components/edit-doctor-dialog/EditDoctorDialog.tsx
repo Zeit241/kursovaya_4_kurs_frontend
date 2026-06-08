@@ -401,7 +401,7 @@ export function EditDoctorDialog({
 											/>
 										</div>
 									</FormControl>
-									<p className="text-xs text-slate-500">
+									<p className="text-xs text-muted-foreground">
 										Загрузка в Directus (нужны VITE_DIRECTUS_URL и VITE_DIRECTUS_STATIC_TOKEN).
 										Максимум 5MB.
 									</p>
@@ -525,7 +525,7 @@ export function EditDoctorDialog({
 												return (
 													<span
 														key={id}
-														className="inline-flex items-center rounded-md bg-slate-800 px-2 py-1 text-xs font-medium text-slate-200"
+														className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground"
 													>
 														{specialization.name}
 														<button
@@ -542,7 +542,7 @@ export function EditDoctorDialog({
 																	{ shouldValidate: true }
 																);
 															}}
-															className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-slate-700"
+															className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-muted"
 														>
 															×
 														</button>

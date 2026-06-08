@@ -209,7 +209,7 @@ export function ServiceBookingPicker({
 											{categoryLabel(s)}
 											{s.durationMinutes != null ? ` · ${s.durationMinutes} мин` : ""}
 										</div>
-										<div className="text-xs text-slate-600 mt-1">{formatPrice(s)}</div>
+										<div className="text-xs text-muted-foreground mt-1">{formatPrice(s)}</div>
 									</div>
 									{selected && (
 										<div className="shrink-0 flex size-7 items-center justify-center rounded-full bg-blue-600 text-white">
@@ -240,13 +240,13 @@ export function ServiceBookingPicker({
 								)}
 							>
 								<div className="flex items-start gap-2">
-									<Stethoscope className="size-5 shrink-0 text-slate-400 mt-0.5" />
+									<Stethoscope className="size-5 shrink-0 text-muted-foreground mt-0.5" />
 									<div className="min-w-0 flex-1">
 										<h3 className="font-medium text-sm leading-snug">{s.name}</h3>
 										<p className="text-xs text-muted-foreground mt-1 line-clamp-2">
 											{categoryLabel(s)}
 										</p>
-										<div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-600">
+										<div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
 											<span>{formatPrice(s)}</span>
 											{s.durationMinutes != null && <span>{s.durationMinutes} мин</span>}
 										</div>

@@ -219,7 +219,7 @@ export default function AdminServicesPage() {
 								value={search}
 								onChange={(e) => setSearch(e.target.value)}
 								placeholder="Название, код или категория"
-								className="border-slate-700"
+								className="border-input"
 							/>
 						</CardContent>
 					</Card>
@@ -310,7 +310,7 @@ export default function AdminServicesPage() {
 								id="svc-name"
 								value={name}
 								onChange={(e) => setName(e.target.value)}
-								className="border-slate-700"
+								className="border-input"
 							/>
 						</div>
 						<div className="grid gap-2">
@@ -319,7 +319,7 @@ export default function AdminServicesPage() {
 								id="svc-code"
 								value={code}
 								onChange={(e) => setCode(e.target.value)}
-								className="border-slate-700"
+								className="border-input"
 							/>
 						</div>
 						<div className="grid grid-cols-2 gap-3">
@@ -332,7 +332,7 @@ export default function AdminServicesPage() {
 									step={0.01}
 									value={price}
 									onChange={(e) => setPrice(e.target.value)}
-									className="border-slate-700"
+									className="border-input"
 								/>
 							</div>
 							<div className="grid gap-2">
@@ -344,7 +344,7 @@ export default function AdminServicesPage() {
 									step={1}
 									value={durationMinutes}
 									onChange={(e) => setDurationMinutes(e.target.value)}
-									className="border-slate-700"
+									className="border-input"
 								/>
 							</div>
 						</div>
@@ -355,7 +355,7 @@ export default function AdminServicesPage() {
 								value={description}
 								onChange={(e) => setDescription(e.target.value)}
 								rows={2}
-								className="border-slate-700 resize-none"
+								className="border-input resize-none"
 							/>
 						</div>
 						<div className="grid gap-2">
@@ -363,7 +363,7 @@ export default function AdminServicesPage() {
 								<Stethoscope className="h-4 w-4" />
 								Категории (специализации)
 							</Label>
-							<div className="rounded-md border border-slate-700 p-3 max-h-48 overflow-y-auto space-y-2">
+							<div className="rounded-md border border-input p-3 max-h-48 overflow-y-auto space-y-2">
 								{loadingSpecs ? (
 									<p className="text-sm text-muted-foreground">Загрузка...</p>
 								) : specializations.length === 0 ? (

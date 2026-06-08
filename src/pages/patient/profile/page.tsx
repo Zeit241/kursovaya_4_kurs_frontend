@@ -144,7 +144,7 @@ export default function PatientProfilePage() {
 						<h2 className="text-3xl font-bold gradient-heading">
 							Мой профиль
 						</h2>
-						<p className="mt-2 text-slate-600">
+						<p className="mt-2 text-muted-foreground">
 							Управление личными данными и настройками
 						</p>
 					</div>

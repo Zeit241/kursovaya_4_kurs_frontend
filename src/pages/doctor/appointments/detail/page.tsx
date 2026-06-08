@@ -32,17 +32,23 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { formatAppointmentDateTime } from "@/lib/appointment-time";
 import { ArrowLeft, Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import {
+	useCompleteAppointmentMutation,
 	useGetAppointmentByIdQuery,
 	useGetDiagnosesQuery,
 	useUpdateAppointmentMutation,
 } from "@/store/api/apiSlice";
+
+import { formatDiagnosisItemLabel } from "@/components/appointment-details-dialog/appointment-display-helpers";
+import { CompleteAppointmentDialog } from "../complete-appointment-dialog";
+import { DoctorPatientHistorySidebar } from "../doctor-patient-history-sidebar";
+import { terminalStatuses, patientShortName, roomDisplayName } from "../doctor-appointments-utils";
 
 const statusLabels: Record<string, string> = {
 	scheduled: "Запланирован",
@@ -63,23 +69,6 @@ const statusValues = [
 	"no_show",
 ] as const;
 
-function patientDisplayName(a: Appointment): string {
-	const p = a.patient as
-		| {
-				user?: { firstName?: string; lastName?: string; middleName?: string | null };
-				firstName?: string;
-				lastName?: string;
-				middleName?: string | null;
-		  }
-		| null
-		| undefined;
-	if (!p) return a.patientId != null ? `Пациент #${a.patientId}` : "—";
-	if (p.user) {
-		return [p.user.lastName, p.user.firstName, p.user.middleName].filter(Boolean).join(" ");
-	}
-	return [p.lastName, p.firstName, p.middleName].filter(Boolean).join(" ");
-}
-
 function diagnosisFromAppointment(a: Appointment): Diagnosis | null {
 	const d = a.diagnosis;
 	if (d == null || typeof d === "string") return null;
@@ -97,7 +86,17 @@ function diagnosisFromAppointment(a: Appointment): Diagnosis | null {
 export default function DoctorAppointmentDetailPage() {
 	const { id } = useParams<{ id: string }>();
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const appointmentId = id ? Number.parseInt(id, 10) : NaN;
+	const returnDate = searchParams.get("date");
+	const returnView = searchParams.get("view");
+	const listPath =
+		returnDate || returnView
+			? `/doctor/appointments?${new URLSearchParams({
+					...(returnDate ? { date: returnDate } : {}),
+					...(returnView === "board" ? { view: "board" } : {}),
+				}).toString()}`
+			: "/doctor/appointments";
 
 	const [saving, setSaving] = useState(false);
 	const [appointment, setAppointment] = useState<Appointment | null>(null);
@@ -109,6 +108,7 @@ export default function DoctorAppointmentDetailPage() {
 	} = useGetAppointmentByIdQuery(appointmentId, { skip: !finiteId });
 	const { data: diagnoses = [] } = useGetDiagnosesQuery();
 	const [updateAppointmentMut] = useUpdateAppointmentMutation();
+	const [completeAppointmentMut] = useCompleteAppointmentMutation();
 
 	const [status, setStatus] = useState<string>("scheduled");
 	const [complaints, setComplaints] = useState("");
@@ -117,6 +117,12 @@ export default function DoctorAppointmentDetailPage() {
 	const [cancelReason, setCancelReason] = useState("");
 	const [selectedDiagnosis, setSelectedDiagnosis] = useState<Diagnosis | null>(null);
 	const [comboOpen, setComboOpen] = useState(false);
+
+	const [completeOpen, setCompleteOpen] = useState(false);
+	const [completeDiagnosis, setCompleteDiagnosis] = useState<Diagnosis | null>(null);
+	const [completeComboOpen, setCompleteComboOpen] = useState(false);
+	const [completing, setCompleting] = useState(false);
+	const [completeDialogEl, setCompleteDialogEl] = useState<HTMLDivElement | null>(null);
 
 	useEffect(() => {
 		if (!finiteId || loading) return;
@@ -153,7 +159,7 @@ export default function DoctorAppointmentDetailPage() {
 					complaints: complaints.trim() || null,
 					anamnesis: anamnesis.trim() || null,
 					recommendations: recommendations.trim() || null,
-					cancelReason: cancelReason.trim() || null,
+					cancelReason: status === "cancelled" ? cancelReason.trim() || null : null,
 					diagnosisId: selectedDiagnosis?.id ?? null,
 				},
 			}).unwrap();
@@ -168,13 +174,43 @@ export default function DoctorAppointmentDetailPage() {
 		}
 	};
 
+	const openComplete = () => {
+		setCompleteDiagnosis(selectedDiagnosis);
+		setCompleteOpen(true);
+	};
+
+	const handleComplete = async () => {
+		if (!appointment || !completeDiagnosis) {
+			toast.error("Выберите диагноз из справочника МКБ");
+			return;
+		}
+		try {
+			setCompleting(true);
+			const res = await completeAppointmentMut({
+				id: appointment.id,
+				body: { diagnosisId: completeDiagnosis.id },
+			}).unwrap();
+			toast.success(res.message || "Приём завершён");
+			setCompleteOpen(false);
+			setCompleteDiagnosis(null);
+			void refetch();
+		} catch (e) {
+			console.error(e);
+			toast.error("Не удалось завершить приём");
+		} finally {
+			setCompleting(false);
+		}
+	};
+
+	const canComplete = appointment && !terminalStatuses.has(appointment.status);
+
 	if (!Number.isFinite(appointmentId)) {
 		return (
 			<main className="flex-1 py-8">
 				<div className="container mx-auto px-4">
-					<p className="text-slate-600">Некорректный идентификатор</p>
+					<p className="text-muted-foreground">Некорректный идентификатор</p>
 					<Button asChild variant="link" className="mt-2 px-0">
-						<Link to="/doctor/appointments">К списку</Link>
+						<Link to={listPath}>К списку приёмов</Link>
 					</Button>
 				</div>
 			</main>
@@ -185,7 +221,7 @@ export default function DoctorAppointmentDetailPage() {
 		return (
 			<main className="flex-1 py-8">
 				<div className="container mx-auto flex justify-center py-24">
-					<Loader2 className="h-10 w-10 animate-spin text-slate-400" />
+					<Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
 				</div>
 			</main>
 		);
@@ -195,9 +231,9 @@ export default function DoctorAppointmentDetailPage() {
 		return (
 			<main className="flex-1 py-8">
 				<div className="container mx-auto px-4">
-					<p className="text-slate-600">Приём не найден или нет доступа</p>
+					<p className="text-muted-foreground">Приём не найден или нет доступа</p>
 					<Button asChild variant="link" className="mt-2 px-0">
-						<Link to="/doctor/appointments">К списку</Link>
+						<Link to={listPath}>К списку приёмов</Link>
 					</Button>
 				</div>
 			</main>
@@ -206,143 +242,59 @@ export default function DoctorAppointmentDetailPage() {
 
 	return (
 		<main className="flex-1 py-8">
-			<div className="container mx-auto max-w-3xl px-4 space-y-6">
-				<div className="flex flex-wrap items-center gap-3">
+			<div className="container mx-auto max-w-6xl px-4">
+				<div className="mb-6 flex flex-wrap items-center gap-3">
 					<Button
 						type="button"
 						variant="ghost"
 						size="sm"
 						className="gap-1 pl-0"
-						onClick={() => navigate("/doctor/appointments")}
+						onClick={() => navigate(listPath)}
 					>
 						<ArrowLeft className="h-4 w-4" />
-						К списку
+						К списку приёмов
 					</Button>
 				</div>
 
-				<div>
-					<h1 className="text-2xl font-bold gradient-heading">Карточка приёма</h1>
-					<p className="mt-1 text-sm text-slate-600">
-						{format(new Date(appointment.startTime), "dd.MM.yyyy HH:mm")}
-						{" — "}
-						{format(new Date(appointment.endTime), "HH:mm")}
-					</p>
-				</div>
+				<div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+					<DoctorPatientHistorySidebar
+						patientId={appointment.patientId}
+						currentAppointmentId={appointment.id}
+						appointment={appointment}
+					/>
+
+					<div className="min-w-0 flex-1 space-y-6">
+						<div>
+							<h1 className="text-2xl font-bold gradient-heading">
+								Карточка приёма
+							</h1>
+							<p className="mt-1 text-sm text-muted-foreground">
+								{patientShortName(appointment)}
+								{" · "}
+								{formatAppointmentDateTime(appointment.startTime, "dd.MM.yyyy HH:mm")}
+								{" — "}
+								{formatAppointmentDateTime(appointment.endTime, "HH:mm")}
+							</p>
+						</div>
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Пациент и слот</CardTitle>
+						<CardTitle>Слот</CardTitle>
 						<CardDescription>Только для просмотра</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-2 text-sm">
-						<p>
-							<span className="text-slate-500">Пациент: </span>
-							{patientDisplayName(appointment)}
-						</p>
 						{appointment.service?.name && (
 							<p>
-								<span className="text-slate-500">Услуга: </span>
+								<span className="text-muted-foreground">Услуга: </span>
 								{appointment.service.name}
 							</p>
 						)}
-						{appointment.room?.code && (
+						{roomDisplayName(appointment.room) && (
 							<p>
-								<span className="text-slate-500">Кабинет: </span>
-								{appointment.room.code}
+								<span className="text-muted-foreground">Кабинет: </span>
+								{roomDisplayName(appointment.room)}
 							</p>
 						)}
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Статус и диагноз</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="space-y-2">
-							<Label>Статус</Label>
-							<Select value={status} onValueChange={setStatus}>
-								<SelectTrigger>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{statusValues.map((s) => (
-										<SelectItem key={s} value={s}>
-											{statusLabels[s] ?? s}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-
-						<div className="space-y-2">
-							<Label>Диагноз (МКБ-10)</Label>
-							<Popover open={comboOpen} onOpenChange={setComboOpen}>
-								<PopoverTrigger asChild>
-									<Button
-										variant="outline"
-										role="combobox"
-										aria-expanded={comboOpen}
-										className="w-full justify-between font-normal"
-									>
-										{selectedDiagnosis
-											? `${selectedDiagnosis.code} — ${selectedDiagnosis.name}`
-											: "Выберите или найдите…"}
-										<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-									</Button>
-								</PopoverTrigger>
-								<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-									<Command>
-										<CommandInput placeholder="Поиск…" />
-										<CommandList>
-											<CommandEmpty>Не найдено</CommandEmpty>
-											<CommandGroup>
-												<CommandItem
-													value="__clear__"
-													onSelect={() => {
-														setSelectedDiagnosis(null);
-														setComboOpen(false);
-													}}
-												>
-													<span className="text-slate-500">Без диагноза</span>
-												</CommandItem>
-												{diagnoses.map((d) => (
-													<CommandItem
-														key={d.id}
-														value={`${d.code} ${d.name}`}
-														onSelect={() => {
-															setSelectedDiagnosis(d);
-															setComboOpen(false);
-														}}
-													>
-														<Check
-															className={cn(
-																"mr-2 h-4 w-4",
-																selectedDiagnosis?.id === d.id
-																	? "opacity-100"
-																	: "opacity-0"
-															)}
-														/>
-														{d.code} — {d.name}
-													</CommandItem>
-												))}
-											</CommandGroup>
-										</CommandList>
-									</Command>
-								</PopoverContent>
-							</Popover>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="cancel-reason">Причина отмены (если отменён)</Label>
-							<Textarea
-								id="cancel-reason"
-								value={cancelReason}
-								onChange={(e) => setCancelReason(e.target.value)}
-								rows={2}
-								placeholder="Необязательно"
-							/>
-						</div>
 					</CardContent>
 				</Card>
 
@@ -385,6 +337,100 @@ export default function DoctorAppointmentDetailPage() {
 					</CardContent>
 				</Card>
 
+				<Card>
+					<CardHeader>
+						<CardTitle>Статус и диагноз</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="space-y-2">
+							<Label>Статус</Label>
+							<Select value={status} onValueChange={setStatus}>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{statusValues.map((s) => (
+										<SelectItem key={s} value={s}>
+											{statusLabels[s] ?? s}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+
+						<div className="space-y-2">
+							<Label>Диагноз (МКБ-10)</Label>
+							<Popover open={comboOpen} onOpenChange={setComboOpen}>
+								<PopoverTrigger asChild>
+									<Button
+										variant="outline"
+										role="combobox"
+										aria-expanded={comboOpen}
+										className="w-full justify-between font-normal"
+									>
+										{selectedDiagnosis
+											? formatDiagnosisItemLabel(selectedDiagnosis)
+											: "Выберите или найдите…"}
+										<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+									</Button>
+								</PopoverTrigger>
+								<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+									<Command>
+										<CommandInput placeholder="Поиск…" />
+										<CommandList>
+											<CommandEmpty>Не найдено</CommandEmpty>
+											<CommandGroup>
+												<CommandItem
+													value="__clear__"
+													onSelect={() => {
+														setSelectedDiagnosis(null);
+														setComboOpen(false);
+													}}
+												>
+													<span className="text-muted-foreground">Без диагноза</span>
+												</CommandItem>
+												{diagnoses.map((d) => (
+													<CommandItem
+														key={d.id}
+														value={`${d.code} ${d.name}`}
+														onSelect={() => {
+															setSelectedDiagnosis(d);
+															setComboOpen(false);
+														}}
+													>
+														<Check
+															className={cn(
+																"mr-2 h-4 w-4",
+																selectedDiagnosis?.id === d.id
+																	? "opacity-100"
+																	: "opacity-0"
+															)}
+														/>
+														{formatDiagnosisItemLabel(d)}
+													</CommandItem>
+												))}
+											</CommandGroup>
+										</CommandList>
+									</Command>
+								</PopoverContent>
+							</Popover>
+						</div>
+
+						{status === "cancelled" && (
+							<div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-4">
+								<Label htmlFor="cancel-reason">Причина отмены</Label>
+								<Textarea
+									id="cancel-reason"
+									value={cancelReason}
+									onChange={(e) => setCancelReason(e.target.value)}
+									rows={2}
+									placeholder="Укажите причину отмены приёма"
+								/>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+
 				<div className="flex flex-wrap gap-3 pb-8">
 					<Button type="button" onClick={handleSave} disabled={saving}>
 						{saving ? (
@@ -396,11 +442,31 @@ export default function DoctorAppointmentDetailPage() {
 							"Сохранить"
 						)}
 					</Button>
-					<Button type="button" variant="outline" onClick={() => navigate("/doctor/appointments")}>
-						Отмена
-					</Button>
+					{canComplete && (
+						<Button type="button" variant="default" onClick={openComplete}>
+							Завершить приём
+						</Button>
+					)}
+				</div>
+					</div>
 				</div>
 			</div>
+
+			<CompleteAppointmentDialog
+				open={completeOpen}
+				onOpenChange={setCompleteOpen}
+				completeDialogEl={completeDialogEl}
+				dialogContentRef={setCompleteDialogEl}
+				selectedAppointment={appointment}
+				selectedDiagnosis={completeDiagnosis}
+				onSelectDiagnosis={setCompleteDiagnosis}
+				comboOpen={completeComboOpen}
+				onComboOpenChange={setCompleteComboOpen}
+				diagnoses={diagnoses}
+				submitting={completing}
+				onCancel={() => setCompleteOpen(false)}
+				onConfirm={handleComplete}
+			/>
 		</main>
 	);
 }

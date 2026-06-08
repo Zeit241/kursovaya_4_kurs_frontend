@@ -118,7 +118,7 @@ export default function DoctorsPage() {
 									value={search}
 									onChange={(e) => setSearch(e.target.value)}
 									placeholder="Поиск по имени или специальности"
-									className="flex-1 border-slate-700"
+									className="flex-1 border-input"
 								/>
 								<Button
 									className="gradient-button"
@@ -150,7 +150,7 @@ export default function DoctorsPage() {
 											const rowPhotoSrc = doctorPhotoImgSrc(doctor.photo);
 											return (
 											<TableRow
-												className=" border-slate-700"
+												className=" border-input"
 												key={doctor.id}
 											>
 												<TableCell>
@@ -164,13 +164,13 @@ export default function DoctorsPage() {
 																target.style.display = "none";
 																const placeholder = document.createElement("div");
 																placeholder.className = "w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center border-2 border-slate-300";
-																placeholder.innerHTML = '<svg class="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>';
+																placeholder.innerHTML = '<svg class="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>';
 																target.parentElement?.insertBefore(placeholder, target);
 															}}
 														/>
 													) : (
 														<div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center border-2 border-slate-300">
-															<User className="h-6 w-6 text-slate-400" />
+															<User className="h-6 w-6 text-muted-foreground" />
 														</div>
 													)}
 												</TableCell>
@@ -184,7 +184,7 @@ export default function DoctorsPage() {
 														{doctor.specializations.map((spec) => (
 															<span
 																key={spec.id}
-																className="px-2 py-1 rounded-full text-xs border border-slate-700"
+																className="px-2 py-1 rounded-full text-xs border border-input"
 															>
 																{spec.name}
 															</span>
@@ -209,7 +209,7 @@ export default function DoctorsPage() {
 																<Button
 																	variant="ghost"
 																	size="sm"
-																	className="border-slate-700"
+																	className="border-input"
 																>
 																	<MoreVertical className="h-4 w-4" />
 																</Button>
@@ -297,8 +297,8 @@ export default function DoctorsPage() {
 							
 							{/* Пагинация */}
 							{doctors.length > 0 && (
-								<div className="flex items-center justify-between px-4 py-4 border-t border-slate-700">
-									<div className="text-sm text-slate-400">
+								<div className="flex items-center justify-between px-4 py-4 border-t border-input">
+									<div className="text-sm text-muted-foreground">
 										Показано {filteredDoctors.length} врачей
 									</div>
 								</div>

@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { formatAppointmentDateTime } from "@/lib/appointment-time";
 import { format } from "date-fns";
 import { BarChart, FileSpreadsheet, FileText } from "lucide-react";
 import { useState } from "react";
@@ -313,7 +314,7 @@ export default function StatisticsPage() {
 						<h2 className="text-3xl font-bold gradient-heading">
 							Статистика и отчеты
 						</h2>
-						<p className="mt-2 text-slate-600">
+						<p className="mt-2 text-muted-foreground">
 							Аналитика работы клиники, формирование отчетов и
 							отправка уведомлений
 						</p>
@@ -671,8 +672,8 @@ export default function StatisticsPage() {
 														>
 															<td className="p-2">
 																{appointment.startTime
-																	? format(
-																			new Date(appointment.startTime),
+																	? formatAppointmentDateTime(
+																			appointment.startTime,
 																			"dd.MM.yyyy HH:mm"
 																		)
 																	: "—"}
