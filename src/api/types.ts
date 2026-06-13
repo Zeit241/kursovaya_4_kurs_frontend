@@ -537,6 +537,69 @@ export interface AppointmentsQueryParams {
 /** Приёмы текущего врача (JWT) */
 export interface MyDoctorAppointmentsParams {
 	date?: string;
+	startDate?: string;
+	endDate?: string;
+	/** day | week */
+	view?: "day" | "week";
+	/** scheduled,in_progress,completed,cancelled */
+	status?: string;
+	summary?: boolean;
+}
+
+/** Персональная панель расписания врача */
+export interface DoctorScheduleSummary {
+	doctorId: number;
+	doctorDisplayName?: string;
+	startDate: string;
+	endDate: string;
+	viewMode?: string;
+	scheduledCount: number;
+	inProgressCount: number;
+	completedCount: number;
+	cancelledCount: number;
+	totalCount: number;
+	appointments: Appointment[];
+}
+
+/** Загрузка врача (аналитика) */
+export interface DoctorWorkloadItem {
+	doctorId: number;
+	doctorDisplayName: string;
+	scheduledCount: number;
+	inProgressCount: number;
+	completedCount: number;
+	cancelledCount: number;
+	totalCount: number;
+}
+
+export interface DailyFinancialItem {
+	date: string;
+	revenue: number | string;
+	completedCount: number;
+}
+
+export interface FinancialStats {
+	startDate: string;
+	endDate: string;
+	totalRevenue: number | string;
+	completedCount: number;
+	averageCheck: number | string;
+	dailyBreakdown: DailyFinancialItem[];
+}
+
+export interface DailyAttendanceItem {
+	date: string;
+	totalCount: number;
+	scheduledCount: number;
+	inProgressCount: number;
+	completedCount: number;
+	cancelledCount: number;
+}
+
+export interface AttendanceDynamics {
+	startDate: string;
+	endDate: string;
+	dailyItems: DailyAttendanceItem[];
 }
 
 /** Строка приёма в отчётах (агрегированные данные) */

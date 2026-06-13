@@ -15,9 +15,18 @@ import {
 	YAxis,
 } from "recharts";
 
-import type { DailyReport, DailyReportAppointmentRow } from "@/api/types";
+import type {
+	AttendanceDynamics,
+	DailyReport,
+	DailyReportAppointmentRow,
+	DoctorWorkloadItem,
+	FinancialStats,
+} from "@/api/types";
 import {
 	useGetDoctorsQuery,
+	useLazyGetAttendanceDynamicsQuery,
+	useLazyGetDoctorWorkloadQuery,
+	useLazyGetFinancialStatsQuery,
 	useLazyExportDailyExcelByDoctorQuery,
 	useLazyExportDailyExcelQuery,
 	useLazyExportDailyPdfByDoctorQuery,
@@ -51,6 +60,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
+import { AdminAnalyticsSection } from "./admin-analytics-section";
 import {
 	reportFormSchema,
 	type ReportFormValues,
@@ -75,11 +85,17 @@ export default function StatisticsPage() {
 	const [exportDailyPdfByDoctor] = useLazyExportDailyPdfByDoctorQuery();
 	const [exportRangePdf] = useLazyExportRangePdfQuery();
 	const [exportRangePdfByDoctor] = useLazyExportRangePdfByDoctorQuery();
+	const [fetchDoctorWorkload] = useLazyGetDoctorWorkloadQuery();
+	const [fetchFinancialStats] = useLazyGetFinancialStatsQuery();
+	const [fetchAttendanceDynamics] = useLazyGetAttendanceDynamicsQuery();
 
 	const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 	const [reportData, setReportData] = useState<DailyReport | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [chartData, setChartData] = useState<ChartDataItem[]>([]);
+	const [workloadData, setWorkloadData] = useState<DoctorWorkloadItem[]>([]);
+	const [financialData, setFinancialData] = useState<FinancialStats | null>(null);
+	const [attendanceData, setAttendanceData] = useState<AttendanceDynamics | null>(null);
 
 	const form = useForm<ReportFormValues>({
 		resolver: zodResolver(reportFormSchema),
@@ -170,6 +186,15 @@ export default function StatisticsPage() {
 			}
 
 			setReportData(report);
+
+			const [workload, financial, attendance] = await Promise.all([
+				fetchDoctorWorkload({ startDate, endDate }).unwrap(),
+				fetchFinancialStats({ startDate, endDate }).unwrap(),
+				fetchAttendanceDynamics({ startDate, endDate }).unwrap(),
+			]);
+			setWorkloadData(workload);
+			setFinancialData(financial);
+			setAttendanceData(attendance);
 
 			// Подготовка данных для графика
 			const nextChart = prepareChartData(
@@ -548,6 +573,14 @@ export default function StatisticsPage() {
 							</Card>
 						</form>
 					</Form>
+
+					{(workloadData.length > 0 || financialData || attendanceData) && (
+						<AdminAnalyticsSection
+							workload={workloadData}
+							financial={financialData}
+							attendance={attendanceData}
+						/>
+					)}
 
 					{/* Статистика */}
 					{reportData && (

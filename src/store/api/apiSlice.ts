@@ -21,8 +21,12 @@ import type {
 	CreateScheduleRequest,
 	CreateSpecializationRequest,
 	CreateUserRequest,
+	AttendanceDynamics,
 	DailyReport,
 	Diagnosis,
+	DoctorScheduleSummary,
+	DoctorWorkloadItem,
+	FinancialStats,
 	Doctor,
 	DoctorsQueryParams,
 	LoginRequest,
@@ -279,6 +283,14 @@ export const api = createApi({
 			query: (params) => ({ url: "appointments/my/doctor", params: params ?? undefined }),
 			transformResponse: (r: unknown) => unwrapList<Appointment>(r),
 			providesTags: [{ type: "Appointment", id: "LIST" }, { type: "Appointment", id: "MY_DOCTOR" }],
+		}),
+		getMyDoctorSchedulePanel: build.query<DoctorScheduleSummary, MyDoctorAppointmentsParams>({
+			query: (params) => ({
+				url: "appointments/my/doctor",
+				params: { ...params, summary: true },
+			}),
+			transformResponse: (r: unknown) => unwrapEntity<DoctorScheduleSummary>(r, "Расписание не найдено"),
+			providesTags: [{ type: "Appointment", id: "MY_DOCTOR" }],
 		}),
 		getAppointmentsByPatient: build.query<Appointment[], number>({
 			query: (patientId) => `appointments/patient/${patientId}`,
@@ -568,6 +580,36 @@ export const api = createApi({
 				params: { startDate, endDate },
 			}),
 		}),
+		getDoctorWorkload: build.query<
+			DoctorWorkloadItem[],
+			{ startDate: string; endDate: string }
+		>({
+			query: ({ startDate, endDate }) => ({
+				url: "reports/analytics/doctor-workload",
+				params: { startDate, endDate },
+			}),
+			transformResponse: (r: unknown) => unwrapList<DoctorWorkloadItem>(r),
+		}),
+		getFinancialStats: build.query<
+			FinancialStats,
+			{ startDate: string; endDate: string }
+		>({
+			query: ({ startDate, endDate }) => ({
+				url: "reports/analytics/financial",
+				params: { startDate, endDate },
+			}),
+			transformResponse: (r: unknown) => unwrapEntity<FinancialStats>(r, "Финансовая статистика не найдена"),
+		}),
+		getAttendanceDynamics: build.query<
+			AttendanceDynamics,
+			{ startDate: string; endDate: string }
+		>({
+			query: ({ startDate, endDate }) => ({
+				url: "reports/analytics/attendance-dynamics",
+				params: { startDate, endDate },
+			}),
+			transformResponse: (r: unknown) => unwrapEntity<AttendanceDynamics>(r, "Динамика не найдена"),
+		}),
 
 		exportDailyExcel: build.query<Blob, string>({
 			query: (date) => ({
@@ -685,6 +727,7 @@ export const {
 	useGetAppointmentByIdQuery,
 	useGetAppointmentsByDoctorQuery,
 	useGetMyDoctorAppointmentsQuery,
+	useGetMyDoctorSchedulePanelQuery,
 	useGetAppointmentsByPatientQuery,
 	useGetAvailableSlotsQuery,
 	useGetAvailableDatesQuery,
@@ -725,6 +768,9 @@ export const {
 	useLazyGetDailyReportByDoctorQuery,
 	useLazyGetRangeReportQuery,
 	useLazyGetRangeReportByDoctorQuery,
+	useLazyGetDoctorWorkloadQuery,
+	useLazyGetFinancialStatsQuery,
+	useLazyGetAttendanceDynamicsQuery,
 	useLazyExportDailyExcelQuery,
 	useLazyExportDailyPdfQuery,
 	useLazyExportDailyExcelByDoctorQuery,
