@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown } from "lucide-react";
 import { directusAssetPreviewUrl, uploadImageToDirectus } from "@/lib/directusUpload";
 import { doctorPhotoImgSrc } from "@/lib/doctorPhotoSrc";
+import { normalizeRussianPhoneDisplay } from "@/lib/normalizeRussianPhone";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -112,7 +113,7 @@ export function EditDoctorDialog({
 				lastName: doctor.user.lastName || "",
 				firstName: doctor.user.firstName || "",
 				middleName: doctor.user.middleName || "",
-				phone: doctor.user.phone || "",
+				phone: normalizeRussianPhoneDisplay(doctor.user.phone || ""),
 				email: doctor.user.email || "",
 				experienceYears: doctor.experienceYears?.toString() || "",
 				bio: doctor.bio || "",
@@ -313,9 +314,22 @@ export function EditDoctorDialog({
 														className="light-input"
 														onValueChange={(values) =>
 															controllerField.onChange(
-																values.formattedValue
+																normalizeRussianPhoneDisplay(
+																	values.formattedValue ||
+																		values.value,
+																),
 															)
 														}
+														onBlur={(e) => {
+															controllerField.onBlur();
+															const normalized =
+																normalizeRussianPhoneDisplay(
+																	e.target.value,
+																);
+															if (normalized !== e.target.value) {
+																controllerField.onChange(normalized);
+															}
+														}}
 													/>
 												)}
 											/>
@@ -366,12 +380,11 @@ export function EditDoctorDialog({
 							name="bio"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>О враче (до 50 символов)</FormLabel>
+									<FormLabel>О враче</FormLabel>
 									<FormControl>
 										<Textarea
 											{...field}
 											className="light-input min-h-[100px]"
-											maxLength={50}
 										/>
 									</FormControl>
 									<FormMessage />

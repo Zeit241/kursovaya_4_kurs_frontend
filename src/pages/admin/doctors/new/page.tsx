@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown } from "lucide-react";
 import { directusAssetPreviewUrl, uploadImageToDirectus } from "@/lib/directusUpload";
+import { normalizeRussianPhoneDisplay, requiredRussianPhoneSchema } from "@/lib/normalizeRussianPhone";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -40,9 +41,7 @@ const doctorSchema = z.object({
 	lastName: z.string().min(2, "Фамилия должна содержать минимум 2 символа"),
 	firstName: z.string().min(2, "Имя должно содержать минимум 2 символа"),
 	middleName: z.string().optional(),
-	phone: z
-		.string()
-		.regex(/^\+7 \(\d{3}\) \d{3}-\d{2}-\d{2}$/, "Неверный формат телефона"),
+	phone: requiredRussianPhoneSchema,
 	email: z.string().email("Неверный формат email").min(1, "Email обязателен"),
 	experienceYears: z
 		.string()
@@ -51,10 +50,7 @@ const doctorSchema = z.object({
 			const num = parseInt(val);
 			return num >= 0 && num <= 80;
 		}, "Стаж должен быть от 0 до 80 лет"),
-	bio: z
-		.string()
-		.max(50, "Биография не должна превышать 50 символов")
-		.optional(),
+	bio: z.string().optional(),
 	specializationIds: z.array(z.number()).optional(),
 	photo: z.string().optional(),
 });
@@ -350,9 +346,22 @@ export default function NewDoctorPage() {
 													className="border-input"
 													onValueChange={(values) =>
 														field.onChange(
-															values.formattedValue
+															normalizeRussianPhoneDisplay(
+																values.formattedValue ||
+																	values.value,
+															),
 														)
 													}
+													onBlur={(e) => {
+														field.onBlur();
+														const normalized =
+															normalizeRussianPhoneDisplay(
+																e.target.value,
+															);
+														if (normalized !== e.target.value) {
+															field.onChange(normalized);
+														}
+													}}
 												/>
 											)}
 										/>
@@ -398,13 +407,12 @@ export default function NewDoctorPage() {
 								</div>
 
 								<div className="space-y-2">
-									<Label htmlFor="bio">О враче (до 50 символов)</Label>
+									<Label htmlFor="bio">О враче</Label>
 									<Textarea
 										id="bio"
 										placeholder="О враче"
 										{...register("bio")}
 										className="border-input"
-										maxLength={50}
 									/>
 									{errors.bio && (
 										<p className="text-sm text-red-500">
