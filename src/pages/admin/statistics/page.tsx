@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { formatAppointmentDateTime } from "@/lib/appointment-time";
 import { format } from "date-fns";
+import { ru } from "date-fns/locale";
 import { BarChart, FileSpreadsheet, FileText } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -118,6 +119,8 @@ export default function StatisticsPage() {
 			{ value: "all", label: "Вся статистика" },
 			{ value: "status", label: "По статусам" },
 			{ value: "doctors", label: "По врачам" },
+			{ value: "financial", label: "Финансирование" },
+			{ value: "attendance", label: "Посещаемость" },
 		];
 	};
 
@@ -196,11 +199,26 @@ export default function StatisticsPage() {
 			setFinancialData(financial);
 			setAttendanceData(attendance);
 
-			// Подготовка данных для графика
-			const nextChart = prepareChartData(
-				report.appointments ?? [],
-				values.statisticsType || "all"
-			);
+			// Подготовка данных для графика по выбранному типу
+			let nextChart: ChartDataItem[] = [];
+			if (values.statisticsType === "financial") {
+				nextChart =
+					financial.dailyBreakdown?.map((item) => ({
+						name: format(new Date(`${item.date}T12:00:00`), "d MMM", { locale: ru }),
+						count: Number(item.revenue ?? 0),
+					})) ?? [];
+			} else if (values.statisticsType === "attendance") {
+				nextChart =
+					attendance.dailyItems?.map((item) => ({
+						name: format(new Date(`${item.date}T12:00:00`), "d MMM", { locale: ru }),
+						count: item.totalCount ?? 0,
+					})) ?? [];
+			} else {
+				nextChart = prepareChartData(
+					report.appointments ?? [],
+					values.statisticsType || "all"
+				);
+			}
 			setChartData(nextChart);
 		} catch (error: unknown) {
 			console.error("Ошибка при загрузке данных:", error);
@@ -691,9 +709,8 @@ export default function StatisticsPage() {
 													<th className="p-2 text-left">Врач</th>
 													<th className="p-2 text-left">Пациент</th>
 													<th className="p-2 text-left">Телефон</th>
-													<th className="p-2 text-left">Кабинет</th>
+															<th className="p-2 text-left">Диагноз</th>
 													<th className="p-2 text-left">Статус</th>
-													<th className="p-2 text-left">Диагноз</th>
 												</tr>
 											</thead>
 											<tbody>
@@ -721,7 +738,15 @@ export default function StatisticsPage() {
 																{appointment.patientPhone || "-"}
 															</td>
 															<td className="p-2">
-																{appointment.roomNumber || "-"}
+																{typeof appointment.diagnosis === "object" &&
+																appointment.diagnosis != null &&
+																"name" in appointment.diagnosis
+																	? `${(appointment.diagnosis as { name?: string; code?: string }).name ?? ""}${
+																			(appointment.diagnosis as { code?: string }).code
+																				? ` (${(appointment.diagnosis as { code?: string }).code})`
+																				: ""
+																		}`.trim() || "-"
+																	: (appointment.diagnosis as string) || "-"}
 															</td>
 															<td className="p-2">
 																<span
@@ -737,13 +762,6 @@ export default function StatisticsPage() {
 																>
 																	{getStatusLabel(appointment.status ?? "")}
 																</span>
-															</td>
-															<td className="p-2">
-																{typeof appointment.diagnosis === "object" &&
-																appointment.diagnosis != null &&
-																"code" in appointment.diagnosis
-																	? `${(appointment.diagnosis as { code?: string; name?: string }).code ?? ""} ${(appointment.diagnosis as { name?: string }).name ?? ""}`.trim() || "-"
-																	: (appointment.diagnosis as string) || "-"}
 															</td>
 														</tr>
 													)

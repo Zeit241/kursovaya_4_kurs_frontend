@@ -55,6 +55,10 @@ export function prepareChartData(
 					count: Number(count),
 				})
 			);
+		case "financial":
+		case "attendance":
+			// Эти типы строятся по данным аналитики (не по списку приёмов)
+			return [];
 		default:
 			return Object.entries(
 				appointments.reduce((acc: Record<string, number>, item) => {

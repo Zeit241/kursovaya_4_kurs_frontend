@@ -193,10 +193,6 @@ export default function DoctorAppointmentsPage() {
 							<span className="font-medium text-foreground">{doctorName}</span>
 						</p>
 					)}
-					<p className="mt-2 text-muted-foreground">
-						Персональное расписание с визуализацией дня и недели и фильтрацией
-						по статусам приёмов.
-					</p>
 				</div>
 
 				{schedulePanel && (
