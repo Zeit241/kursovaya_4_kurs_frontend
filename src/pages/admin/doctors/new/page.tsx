@@ -117,10 +117,12 @@ export default function NewDoctorPage() {
 			const fileId = await uploadImageToDirectus(file);
 			setValue("photo", fileId);
 			setPhotoPreview(directusAssetPreviewUrl(fileId));
-			toast.success("Фото загружено в Directus");
+			toast.success("Фото загружено");
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : String(err);
-			toast.error("Не удалось загрузить фото", { description: msg });
+			console.error("Ошибка загрузки фото врача:", err);
+			toast.error("Не удалось загрузить фото", {
+				description: "Попробуйте выбрать другой файл или повторите позже.",
+			});
 		} finally {
 			setIsPhotoUploading(false);
 		}
@@ -431,7 +433,7 @@ export default function NewDoctorPage() {
 										/>
 									</div>
 									<p className="text-xs text-muted-foreground">
-										Directus: VITE_DIRECTUS_URL, VITE_DIRECTUS_STATIC_TOKEN. Максимум 5MB.
+										Поддерживаются изображения до 5MB.
 									</p>
 								</div>
 

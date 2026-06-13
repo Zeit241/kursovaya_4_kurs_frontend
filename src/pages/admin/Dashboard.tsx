@@ -206,7 +206,7 @@ export default function AdminDashboard() {
 													doctorName = `${doctor.user.lastName} ${doctor.user.firstName} ${doctor.user.middleName || ''}`.trim();
 												} else if (doctor.firstName && doctor.lastName) {
 													// Если API возвращает поля напрямую
-													doctorName = `${doctor.firstName} ${doctor.lastName}`;
+													doctorName = `${doctor.lastName} ${doctor.firstName}`;
 												}
 											}
 											

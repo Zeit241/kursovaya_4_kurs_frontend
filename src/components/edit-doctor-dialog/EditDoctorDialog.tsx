@@ -146,10 +146,12 @@ export function EditDoctorDialog({
 			const fileId = await uploadImageToDirectus(file);
 			form.setValue("photo", fileId);
 			setPhotoPreview(directusAssetPreviewUrl(fileId));
-			toast.success("Фото загружено в Directus");
+			toast.success("Фото загружено");
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : String(err);
-			toast.error("Не удалось загрузить фото", { description: msg });
+			console.error("Ошибка загрузки фото врача:", err);
+			toast.error("Не удалось загрузить фото", {
+				description: "Попробуйте выбрать другой файл или повторите позже.",
+			});
 		} finally {
 			setIsPhotoUploading(false);
 		}
@@ -402,8 +404,7 @@ export function EditDoctorDialog({
 										</div>
 									</FormControl>
 									<p className="text-xs text-muted-foreground">
-										Загрузка в Directus (нужны VITE_DIRECTUS_URL и VITE_DIRECTUS_STATIC_TOKEN).
-										Максимум 5MB.
+										Поддерживаются изображения до 5MB.
 									</p>
 									<FormMessage />
 								</FormItem>

@@ -247,8 +247,8 @@ export default function PatientsPage() {
 												className=" border-input"
 											>
 												<TableCell className="font-medium">
-													{patient.user.firstName}{" "}
 													{patient.user.lastName}{" "}
+													{patient.user.firstName}{" "}
 													{patient.user.middleName}
 												</TableCell>
 												<TableCell>
