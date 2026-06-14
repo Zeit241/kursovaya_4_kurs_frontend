@@ -174,7 +174,9 @@ export function EditDoctorDialog({
 			const requestData = {
 				user: {
 					email: values.email,
-					...(values.phone && { phone: values.phone }),
+					...(values.phone && {
+						phone: normalizeRussianPhoneDisplay(values.phone),
+					}),
 					firstName: values.firstName,
 					lastName: values.lastName,
 					middleName: values.middleName || "",

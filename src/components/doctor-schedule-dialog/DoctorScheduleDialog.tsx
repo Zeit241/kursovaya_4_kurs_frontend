@@ -24,6 +24,7 @@ import {
 
 import { Room } from "@/api/types";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
+import { roomDisplayName } from "@/lib/room-display-name";
 import { scheduleFormSchema, type ScheduleFormData } from "./schedule-form-schema";
 import { sortWorkingHoursSchedules } from "./sort-working-hours-schedules";
 import { Badge } from "@/components/ui/badge";
@@ -646,8 +647,8 @@ export function DoctorScheduleDialog({
 														key={room.id}
 														value={room.id.toString()}
 													>
-														{room.code}
-														{room.name && ` - ${room.name}`}
+														{roomDisplayName(room) ??
+															`Кабинет #${room.id}`}
 													</SelectItem>
 												))}
 												{rooms.length === 0 && !isLoadingRooms && (

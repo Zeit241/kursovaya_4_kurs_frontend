@@ -154,7 +154,9 @@ export default function NewDoctorPage() {
 				password: credentials.password,
 				user: {
 					email: data.email,
-					...(data.phone && { phone: data.phone }),
+					...(data.phone && {
+						phone: normalizeRussianPhoneDisplay(data.phone),
+					}),
 					firstName: data.firstName,
 					lastName: data.lastName,
 					middleName: data.middleName || "",
