@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	doctorsQueryParams,
 	isAuthPath,
+	unwrapDoctorScheduleSummary,
 	unwrapEntity,
 	unwrapList,
 } from "./utils";
@@ -28,6 +29,25 @@ describe("unwrapEntity", () => {
 		expect(() =>
 			unwrapEntity({ success: false, message: "fail", data: null, status: 404 }, "fallback")
 		).toThrow("fail");
+	});
+});
+
+describe("unwrapDoctorScheduleSummary", () => {
+	it("returns raw panel with doctorId without ApiResponse wrapper", () => {
+		const panel = {
+			doctorId: 2,
+			doctorDisplayName: "Петров Борис Алексеевич",
+			startDate: "2026-06-15",
+			endDate: "2026-06-15",
+			viewMode: "day",
+			scheduledCount: 5,
+			inProgressCount: 0,
+			completedCount: 0,
+			cancelledCount: 0,
+			totalCount: 5,
+			appointments: [{ id: 1, patientId: 2, status: "scheduled" }],
+		};
+		expect(unwrapDoctorScheduleSummary(panel)).toEqual(panel);
 	});
 });
 

@@ -59,6 +59,7 @@ import { baseQueryWithReauth } from "./baseQuery";
 import {
 	doctorsQueryParams,
 	unwrapDoctorDto,
+	unwrapDoctorScheduleSummary,
 	unwrapEntity,
 	unwrapList,
 	unwrapWrappedOrEntity,
@@ -289,7 +290,7 @@ export const api = createApi({
 				url: "appointments/my/doctor",
 				params: { ...params, summary: true },
 			}),
-			transformResponse: (r: unknown) => unwrapEntity<DoctorScheduleSummary>(r, "Расписание не найдено"),
+			transformResponse: (r: unknown) => unwrapDoctorScheduleSummary(r),
 			providesTags: [{ type: "Appointment", id: "MY_DOCTOR" }],
 		}),
 		getAppointmentsByPatient: build.query<Appointment[], number>({

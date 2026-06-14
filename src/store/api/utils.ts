@@ -19,6 +19,25 @@ export function unwrapEntity<T>(data: unknown, fallbackMessage: string): T {
 	throw new Error((wrapped as ApiResponse<T>)?.message || fallbackMessage);
 }
 
+/** Панель расписания врача приходит без поля id (есть doctorId). */
+export function unwrapDoctorScheduleSummary(
+	data: unknown,
+): import("@/api/types").DoctorScheduleSummary {
+	if (
+		data &&
+		typeof data === "object" &&
+		"doctorId" in data &&
+		"appointments" in data &&
+		!("success" in data)
+	) {
+		return data as import("@/api/types").DoctorScheduleSummary;
+	}
+	return unwrapEntity<import("@/api/types").DoctorScheduleSummary>(
+		data,
+		"Расписание не найдено",
+	);
+}
+
 export function unwrapDoctorDto(data: unknown): import("@/api/types").Doctor {
 	return unwrapEntity<import("@/api/types").Doctor>(data, "Врач не найден");
 }
