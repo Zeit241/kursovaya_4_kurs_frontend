@@ -65,17 +65,20 @@ export function CompleteAppointmentDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent ref={dialogContentRef} className="sm:max-w-lg">
+			<DialogContent
+				ref={dialogContentRef}
+				className="max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto"
+			>
 				<DialogHeader>
 					<DialogTitle>Завершить приём</DialogTitle>
-					<DialogDescription>
+					<DialogDescription className="break-words">
 						Выберите диагноз по МКБ-10. Статус будет установлен «Завершён», пациент
 						удалится из очереди.
 					</DialogDescription>
 				</DialogHeader>
 				{selectedAppointment && (
-					<div className="space-y-1.5 rounded-lg border bg-muted/40 p-3 text-sm">
-						<p>
+					<div className="min-w-0 max-w-full space-y-1.5 overflow-hidden rounded-lg border bg-muted/40 p-3 text-sm">
+						<p className="min-w-0 break-words">
 							<span className="text-muted-foreground">Время: </span>
 							<span className="font-medium">
 								{formatAppointmentDateTime(
@@ -86,20 +89,20 @@ export function CompleteAppointmentDialog({
 								{formatAppointmentDateTime(selectedAppointment.endTime, "HH:mm")}
 							</span>
 						</p>
-						<p>
+						<p className="min-w-0 break-words">
 							<span className="text-muted-foreground">Пациент: </span>
 							<span className="font-medium">
 								{patientShortName(selectedAppointment)}
 							</span>
 						</p>
 						{selectedAppointment.service?.name && (
-							<p>
+							<p className="min-w-0 break-words">
 								<span className="text-muted-foreground">Услуга: </span>
 								{selectedAppointment.service.name}
 							</p>
 						)}
 						{room && (
-							<p>
+							<p className="min-w-0 break-words">
 								<span className="text-muted-foreground">Кабинет: </span>
 								{room}
 							</p>
@@ -114,9 +117,9 @@ export function CompleteAppointmentDialog({
 								variant="outline"
 								role="combobox"
 								aria-expanded={comboOpen}
-								className="h-auto min-h-10 w-full justify-between gap-2 py-2 font-normal"
+								className="h-auto min-h-10 w-full min-w-0 justify-between gap-2 py-2 font-normal"
 							>
-								<span className="line-clamp-2 text-left">
+								<span className="min-w-0 flex-1 line-clamp-2 break-words text-left">
 									{selectedDiagnosis
 										? formatDiagnosisItemLabel(selectedDiagnosis)
 										: "Найти по коду или названию…"}
@@ -126,7 +129,7 @@ export function CompleteAppointmentDialog({
 						</PopoverTrigger>
 						<PopoverContent
 							container={completeDialogEl}
-							className="z-[100] w-[var(--radix-popover-trigger-width)] p-0"
+							className="z-[100] max-w-[calc(100vw-3rem)] w-[var(--radix-popover-trigger-width)] p-0"
 							align="start"
 						>
 							<Command>
@@ -151,7 +154,7 @@ export function CompleteAppointmentDialog({
 															: "opacity-0"
 													)}
 												/>
-												<span className="truncate">
+												<span className="min-w-0 whitespace-normal break-words">
 													{formatDiagnosisItemLabel(d)}
 												</span>
 											</CommandItem>
@@ -162,7 +165,7 @@ export function CompleteAppointmentDialog({
 						</PopoverContent>
 					</Popover>
 				</div>
-				<DialogFooter>
+				<DialogFooter className="gap-2 sm:space-x-0">
 					<Button variant="outline" onClick={onCancel} disabled={submitting}>
 						Отмена
 					</Button>
